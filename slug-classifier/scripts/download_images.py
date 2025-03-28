@@ -1,8 +1,10 @@
 import csv
 import os
 import requests
+import concurrent.futures
 from urllib.parse import urlparse
 from pathlib import Path
+import time
 
 def download_image(url, output_folder, row_index=None):
     """
@@ -17,33 +19,24 @@ def download_image(url, output_folder, row_index=None):
         Path to saved image or None if download failed
     """
     try:
-        # Create the output folder if it doesn't exist
         os.makedirs(output_folder, exist_ok=True)
-        
-        # Get the image data
         response = requests.get(url, stream=True)
-        response.raise_for_status()  # Raise exception for HTTP errors
+        response.raise_for_status()  
         
-        # Determine filename - either from URL or use index
         if row_index is not None:
-            # Extract file extension from URL
             parsed_url = urlparse(url)
             path = parsed_url.path
             ext = os.path.splitext(path)[1]
             if not ext:
-                # Default to .jpg if no extension found
                 ext = '.jpg'
             filename = f"image_{row_index}{ext}"
         else:
-            # Use the filename from the URL
             filename = os.path.basename(urlparse(url).path)
             if not filename:
                 return None
         
-        # Full path for the output file
         output_path = os.path.join(output_folder, filename)
         
-        # Save the image
         with open(output_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
@@ -55,43 +48,67 @@ def download_image(url, output_folder, row_index=None):
         print(f"Error downloading {url}: {e}")
         return None
 
-def download_images_from_csv(csv_file, output_folder, url_column='image_url', limit=None):
+def download_images_parallel(csv_file, output_folder, url_column='image_url', limit=None, max_workers=10):
     """
-    Download images from URLs in a CSV file.
+    Download images from URLs in a CSV file using parallel processing.
     
     Args:
         csv_file: Path to the CSV file
         output_folder: Folder to save the images
         url_column: Name of the column containing image URLs
         limit: Maximum number of images to download
+        max_workers: Maximum number of concurrent download workers
     
     Returns:
         List of paths to downloaded images
     """
+    # Ensure output directory exists
+    os.makedirs(output_folder, exist_ok=True)
+    
+    # Read URLs from CSV
+    urls_to_download = []
+    try:
+        with open(csv_file, 'r', newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            
+            if reader.fieldnames and url_column not in reader.fieldnames:
+                print(f"Error: Column '{url_column}' not found in CSV file")
+                print(f"Available columns: {', '.join(reader.fieldnames)}")
+                return []
+            
+            for i, row in enumerate(reader):
+                if limit is not None and i >= limit:
+                    break
+                    
+                url = row.get(url_column)
+                if url:
+                    urls_to_download.append((url, i))
+    except Exception as e:
+        print(f"Error reading CSV file: {e}")
+        return []
+    
+    # Download images in parallel
+    start_time = time.time()
     downloaded_images = []
     
-    with open(csv_file, 'r', newline='', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Create a dictionary to store futures and their corresponding indices
+        future_to_url = {
+            executor.submit(download_image, url, output_folder, idx): (url, idx) 
+            for url, idx in urls_to_download
+        }
         
-        # Check if the URL column exists
-        if reader.fieldnames and url_column not in reader.fieldnames:
-            print(f"Error: Column '{url_column}' not found in CSV file")
-            print(f"Available columns: {', '.join(reader.fieldnames)}")
-            return downloaded_images
-        
-        # Download each image
-        for i, row in enumerate(reader):
-            # Stop if we've reached the limit
-            if limit is not None and i >= limit:
-                break
-                
-            url = row.get(url_column)
-            if url:
-                image_path = download_image(url, output_folder, i)
+        for future in concurrent.futures.as_completed(future_to_url):
+            url, idx = future_to_url[future]
+            try:
+                image_path = future.result()
                 if image_path:
                     downloaded_images.append(image_path)
+            except Exception as e:
+                print(f"Worker error processing {url} (index {idx}): {e}")
     
-    print(f"Downloaded {len(downloaded_images)} images")
+    elapsed_time = time.time() - start_time
+    print(f"Downloaded {len(downloaded_images)} images in {elapsed_time:.2f} seconds")
     return downloaded_images
 
 if __name__ == "__main__":
@@ -105,7 +122,9 @@ if __name__ == "__main__":
                         help='Name of the column containing image URLs')
     parser.add_argument('--limit', '-l', type=int, default=10,
                         help='Maximum number of images to download (default: 10)')
+    parser.add_argument('--workers', '-w', type=int, default=10,
+                        help='Maximum number of concurrent workers (default: 10)')
     
     args = parser.parse_args()
     
-    download_images_from_csv(args.csv_file, args.output, args.column, args.limit) 
+    download_images_parallel(args.csv_file, args.output, args.column, args.limit, args.workers)
