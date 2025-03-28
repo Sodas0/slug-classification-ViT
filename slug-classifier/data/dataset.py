@@ -31,7 +31,7 @@ import numpy as np
 
 class SlugDataset(Dataset):
     def __init__(self, image_dir, csv_file, transform=None, label_column='common_name', 
-                 require_label=True, default_label=None):
+                 require_label=True, default_label=None, transform_type='train'):
         """
         Args:
             image_dir (string): Directory with all the images
@@ -40,13 +40,18 @@ class SlugDataset(Dataset):
             label_column (string): Name of the column containing the class labels
             require_label (bool): If True, only include samples with valid labels
             default_label (any): Default value to use when label is missing (if require_label=False)
+            transform_type (string): Type of transfrom to use (train, val, test, none)
         """
         self.image_dir = image_dir
         self.metadata = pd.read_csv(csv_file)
-        self.transform = transform
         self.label_column = label_column
+
+        if transform is not None:
+            self.transform = transform
+        else: 
+            self.transform = self._get_transforms(transform_type)
         
-        # Create a mapping of image indices to their filenames
+        # mapping image indices to the correct filenames
         self.image_files = {}
         for filename in os.listdir(image_dir):
             if filename.startswith("image_") and (filename.endswith(".jpg") or filename.endswith(".jpeg")):
@@ -56,7 +61,7 @@ class SlugDataset(Dataset):
                 except (ValueError, IndexError):
                     continue
         
-        # Create a list of valid indices (both image exists and has valid metadata)
+        # list of valid indices (both image exists and has valid metadata)
         self.valid_indices = []
         
         for idx in range(len(self.metadata)):
@@ -74,6 +79,50 @@ class SlugDataset(Dataset):
                 self.valid_indices.append(idx)
                 
         print(f"Dataset created with {len(self.valid_indices)} valid samples out of {len(self.metadata)} total rows")
+    
+    def _get_transforms(self, transform_type):
+        """
+        Get standard transforms based on the specified type.
+        
+        Args:
+            transform_type (string): Type of transform ('train', 'val', 'test', or 'none')
+            
+        Returns:
+            torchvision.transforms.Compose: Composition of transforms
+        """
+        # imagenet norm vals
+        normalize = transforms.Normalize(
+            mean=[0,0,0],
+            std=[1,1,1]
+        )
+        # transforms.Normalize(
+        #     mean=[0.485, 0.456, 0.406],
+        #     std=[0.229, 0.224, 0.225]
+        # )
+        if transform_type == "none":
+            return transforms.Compose([transforms.ToTensor(),])
+        
+        elif transform_type == "train":
+            return transforms.Compose([
+                transforms.Resize((256, 256)),  # slightly larger than final size
+                transforms.RandomCrop(224),     # Random crop to 224x224
+                transforms.RandomHorizontalFlip(p=0.5),  # 50% chance of horizontal flip
+                transforms.RandomRotation(15),  # Random rotation by up to 15 degrees
+                transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05),  # Slight color jitter
+                transforms.ToTensor(),
+                normalize
+            ])
+            
+        elif transform_type == 'val' or transform_type == 'test':
+            return transforms.Compose([
+                transforms.Resize((224, 224)), 
+                transforms.ToTensor(),
+                normalize
+            ])
+            
+        else:
+            raise ValueError(f"Unknown transform type: {transform_type}")
+            
     
     def __len__(self):
         return len(self.valid_indices)
@@ -161,14 +210,14 @@ def peek_dataset(dataset, num_samples=10, figsize=(15, 10)):
     return indices
 
 # test to ensure dataset exists
-# dataset = SlugDataset(
-#     image_dir="/Users/sohamdas/Desktop/myVit/slug-classifier/data/interim/downloaded_images",
-#     csv_file="/Users/sohamdas/Desktop/myVit/slug-classifier/data/raw/observations-542622.csv",
-#     label_column='common_name', 
-#     require_label=True
-# )
+dataset = SlugDataset(
+    image_dir="/Users/sohamdas/Desktop/myVit/slug-classifier/data/interim/downloaded_images",
+    csv_file="/Users/sohamdas/Desktop/myVit/slug-classifier/data/raw/observations-542622.csv",
+    label_column='common_name', 
+    require_label=True
+)
 
-# random_indices = peek_dataset(dataset)
+random_indices = peek_dataset(dataset)
 
 """
 def create_data_loaders(root_dir, metadata_file, batch_size=32, num_workers=4, 
