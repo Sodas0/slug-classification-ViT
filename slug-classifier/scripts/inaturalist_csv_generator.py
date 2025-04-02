@@ -51,6 +51,18 @@ class INaturalistCSVGenerator:
             writer = csv.DictWriter(file, fieldnames=headers)
             writer.writeheader()
     
+    def is_slug(self, taxon):
+        """Check if a taxon is a slug based on its name"""
+        if not taxon:
+            return False
+        
+        # Check both scientific name and common name
+        scientific_name = taxon.get('name', '').lower()
+        common_name = taxon.get('preferred_common_name', '').lower()
+        
+        # Exclude if either name contains 'slug'
+        return 'slug' in scientific_name or 'slug' in common_name
+    
     def get_slug_taxon_ids(self):
         """Find taxon IDs for actual slugs to exclude them"""
         search_url = f"{self.base_url}/taxa"
@@ -65,11 +77,12 @@ class INaturalistCSVGenerator:
         if response.status_code == 200:
             data = response.json()
             for taxon in data.get("results", []):
-                self.slugs_taxon_ids.append(taxon["id"])
-                
-                # Also add parent taxon IDs to make sure we exclude the whole slug family
-                if "ancestor_ids" in taxon:
-                    self.slugs_taxon_ids.extend(taxon["ancestor_ids"])
+                if self.is_slug(taxon):
+                    self.slugs_taxon_ids.append(taxon["id"])
+                    
+                    # Also add parent taxon IDs to make sure we exclude the whole slug family
+                    if "ancestor_ids" in taxon:
+                        self.slugs_taxon_ids.extend(taxon["ancestor_ids"])
             
             self.slugs_taxon_ids = list(set(self.slugs_taxon_ids))  # Remove duplicates
             logging.info(f"Found {len(self.slugs_taxon_ids)} slug-related taxon IDs to exclude")
@@ -80,8 +93,8 @@ class INaturalistCSVGenerator:
         """Find taxon IDs similar to slugs but not actual slugs"""
         similar_terms = [
             "snail", "mollusk", "gastropod", "worm", "leech", 
-            "planarian", "flatworm", "nudibranch", "sea slug", 
-            "caterpillar", "larva", "earthworm", "annelid"
+            "planarian", "flatworm", "nudibranch", "caterpillar", 
+            "larva", "earthworm", "annelid"
         ]
         
         for term in similar_terms:
@@ -97,8 +110,8 @@ class INaturalistCSVGenerator:
             if response.status_code == 200:
                 data = response.json()
                 for taxon in data.get("results", []):
-                    # Don't add if it's in the slug exclusion list
-                    if taxon["id"] not in self.slugs_taxon_ids:
+                    # Don't add if it's a slug or in the slug exclusion list
+                    if not self.is_slug(taxon) and taxon["id"] not in self.slugs_taxon_ids:
                         self.similar_to_slugs_taxon_ids.append(taxon["id"])
             else:
                 logging.error(f"Failed to search for '{term}': {response.status_code}")
@@ -143,10 +156,10 @@ class INaturalistCSVGenerator:
                 observations = []
                 
                 for obs in data.get("results", []):
-                    # Only include observations with photos
+                    # Only include observations with photos and valid taxon
                     if 'photos' in obs and obs['photos'] and 'taxon' in obs:
-                        # Skip if it's a slug
-                        if 'taxon' in obs and 'id' in obs['taxon'] and obs['taxon']['id'] in self.slugs_taxon_ids:
+                        # Skip if it's a slug or has 'slug' in the name
+                        if self.is_slug(obs['taxon']) or obs['taxon']['id'] in self.slugs_taxon_ids:
                             continue
                         
                         # Make sure the image URL is available and points to a medium-sized image

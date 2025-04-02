@@ -39,6 +39,7 @@ Thumbs.db
 
 # Dataset files
 data/MNIST
+SLUGdata/
 
 # Trained models
 *.pt
