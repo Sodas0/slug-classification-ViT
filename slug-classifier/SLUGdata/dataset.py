@@ -176,7 +176,7 @@ class SlugDataset(Dataset):
             img_name = os.path.join(self.image_dir, self.image_files[actual_idx])
             image = Image.open(img_name).convert('RGB')
             image_metadata = self.metadata.iloc[actual_idx]
-            label = image_metadata[self.label_column]
+            label = 1 #image_metadata[self.label_column]
             metadata = image_metadata.to_dict()
         else:
             # Handle negative example
@@ -271,7 +271,7 @@ def peek_dataset(dataset, num_samples=10, figsize=(15, 10)):
 # random_indices = peek_dataset(dataset)
 
 
-def create_data_loaders(root_dir, metadata_file, batch_size=32, num_workers=4, 
+def create_binary_data_loaders(root_dir, metadata_file, batch_size=32, num_workers=4, 
                         train_transform=None, val_transform=None, test_transform=None,
                         label_column='common_name', mode='binary', val_split=0.15, test_split=0.15,
                         random_seed=42, negative_dir=None, limit=180000):
