@@ -11,13 +11,15 @@ Implementation guidelines:
 - Add a custom classification head with proper regularization
 - Include prediction functionality with confidence scoring
 """
+from PIL import ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
-from torchsummary import summary
+#from torchsummary import summary
 from tqdm import tqdm
 import numpy as np
 import os
@@ -167,11 +169,12 @@ def create_binary_classifier(config):
 
 
 
-def train_binary_classifier(model, train_loader, val_loader, criterion, optimizer, 
-                           num_epochs=10, device='cuda' if torch.backends.mps.is_available() else 'cpu'):
-
+def train_binary_classifier(model, train_loader, val_loader, criterion, optimizer, device,
+                           num_epochs=10):
+    print(f"USING DEVICE: {device} ")
     import torch.optim as optim
     from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
     
     """
     Training loop for the Slug Classifier.
@@ -297,12 +300,13 @@ def train_binary_classifier(model, train_loader, val_loader, criterion, optimize
 
 
 def main():
-    # First, let's create the data loaders from the dataset module
+
     dataloaders_dict = create_binary_data_loaders(
-        root_dir='/Users/sohamdas/Desktop/Projects/myVit/slug-classifier/SLUGdata/interim/downloaded_images',
-        metadata_file='/Users/sohamdas/Desktop/Projects/myVit/slug-classifier/SLUGdata/raw/slugs.csv',
+        root_dir=r'C:\Users\soham\Desktop\slug-classification-ViT\slug-classifier\data\interim\downloaded_images',
+        metadata_file=r'C:\Users\soham\Desktop\slug-classification-ViT\slug-classifier\data\raw\slugs.csv',
         mode='binary',
-        negative_dir='/Users/sohamdas/Desktop/Projects/myVit/slug-classifier/SLUGdata/interim/negative_examples')
+        negative_dir=r'C:\Users\soham\Desktop\slug-classification-ViT\slug-classifier\data\interim\negative_examples')
+    
     
     #Replace config later with yaml
     config = {
@@ -322,59 +326,42 @@ def main():
     training_dataloader = dataloaders_dict['train']
     validation_dataloader = dataloaders_dict['val']
     
-    device = 'mps' if torch.backends.mps.is_available() else 'cpu'
-    
-    
-    
-    # for feature, label in training_dataloader:
-    #     # Move data to device
-    #     feature = feature.to(device)
-    #     label = label.to(device)
-        
-        # Print statements for debugging
-        # print(f"Feature batch shape: {feature.size()}")
-        # print(f"Label batch shape: {label.size()}")
-        # print(f"Feature data type: {feature.dtype}")
-        # print(f"Label data type: {label.dtype}")
-        # print(f"First few labels: {label[:5]}")
-        
-           
     model.train()  
-    
-    train_binary_classifier(
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f"DEVICE: {device}")
+    model, history = train_binary_classifier(
         model=model, 
         train_loader=training_dataloader, 
         val_loader=validation_dataloader,
         criterion=criterion,
         optimizer=optimizer,
-        num_epochs=10,
-        device=device)
+        device=device,
+        num_epochs=10)
     
-        
-
-#     x = dataloaders_dict['train']
-#     print(isinstance(x, DataLoader))
-#     print(len(x))
-#     feature, label = next(iter(x))
-#     print(type(feature))
-#     print(type(label))
-#     print(f"Feature batch shape: {feature.size()}")
-#     print(f"Label batch shape: {len(label)}")
-    
-#    # example pass from actual data
-    
-#     output = model(feature)
-    
-#     # print shapes
-#     print(f"Input shape: {feature.shape}")
-#     print(f"Output shape: {output.shape}")
-#     print(f"Output values (first few): {output[:2]}")
-    
-#     # for binary classification, the output should be of shape [batch_size, 1]
-#     print("Forward pass test ok")
-    
-    
-    
+    import csv
+    # Save training history to a CSV file
+    csv_file_path = os.path.join(config['log_dir'], 'training_history.csv')
+    with open(csv_file_path, mode='w', newline='') as csv_file:
+        writer = csv.writer(csv_file)
+        # Write header
+        writer.writerow(['Epoch', 'Train Loss', 'Train Accuracy', 'Val Loss', 'Val Accuracy', 
+                         'Val Precision', 'Val Recall', 'Val F1'])
+        # Write data
+        for epoch in range(len(history['train_loss'])):
+            writer.writerow([
+                epoch + 1,
+                history['train_loss'][epoch],
+                history['train_acc'][epoch],
+                history['val_loss'][epoch],
+                history['val_acc'][epoch],
+                history['val_precision'][epoch],
+                history['val_recall'][epoch],
+                history['val_f1'][epoch]
+            ])
+    print(f"Training history saved to {csv_file_path}")
+            
+    torch.save(model.state_dict(), 'model_weights.pth')
+    torch.save(model, 'full_model.pth')
 
 if __name__ == "__main__":
     main()
