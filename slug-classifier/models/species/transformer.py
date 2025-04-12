@@ -5,62 +5,59 @@ This module should implement:
 1. SlugSpeciesClassifier class - A Vision Transformer model for species classification
 2. Supporting functions for creating and configuring the species classifier
 
-Implementation guidelines:
-- Use Vision Transformer architecture (ViT-B/16, ViT-B/32, Swin Transformer)
-- Support pre-trained weights and potential backbone freezing
-- Implement gradient checkpointing for memory efficiency
-- Add support for hierarchical classification (family → genus → species)
+Implementation:
+- Use Vision Transformer architecture (ViT-B/16, ViT-B/32, (probably will use vit_b_16 cause training. but
+    diff in params is like 2m, maybe will use 32 just for funsies)  
+- Support pre-trained weights and backbone freezing - ViT needs to learn difference between slug species.
+- Add support for hierarchical classification (family → genus → species)(?) maybe
 - Include confidence scoring and top-k predictions
+- Main thing is to benchmark performance based on #imgs/class.
 """
 
-# TODO: Implementation
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torchvision.models import vit_b_16, ViT_B_16_Weights
+from tqdm import tqdm
+import numpy as np
+import os
+import sys
+from datetime import datetime
+from torch.utils.data import DataLoader
+from torchsummary import summary
 
-# Example structure:
-"""
-class SlugSpeciesClassifier(ClassificationModel):
+
+# TODO: (order doesn't matter, just needs to get done)
+    # create more organized and robust dataset and this time, include a sh script for
+        # dataset download []
+    # dataset analysis to count number of classes and images/class for research []
+    # script for dataloader should be able to configure #imgs/class []
+    # import and freeze vit_b_16 or vit_b_32 []
+    # example pass of fake data in expected shape []
+    # etc. will write more as tasks get done based on needs.
+
+class SlugSpeciesClassifier(nn.Module):
     '''
-    Species classifier to identify specific slug species.
+    Species classifier to identify species of slugs.
     
-    Uses a Vision Transformer pre-trained model with a custom classification head.
+    Uses ViT-B/16.
     
     Args:
-        model_name: Base model architecture ('vit_b_16', 'vit_b_32', 'swin_t', etc.)
-        num_classes: Number of slug species classes
-        pretrained: Whether to use pretrained weights
-        freeze_backbone: Whether to freeze the backbone network
-        use_gradient_checkpointing: Whether to use gradient checkpointing for memory efficiency
-        dropout_rate: Dropout rate for classification head
-        learning_rate: Learning rate for optimizer
-        weight_decay: Weight decay for optimizer
-        use_hierarchical: Whether to use hierarchical classification
+
     '''
     
-    def __init__(self, model_name='vit_b_16', num_classes=100, pretrained=True,
-                 freeze_backbone=False, use_gradient_checkpointing=True,
-                 dropout_rate=0.1, learning_rate=5e-5, weight_decay=1e-4,
-                 use_hierarchical=False):
-        # TODO: Initialize model
-        pass
-    
-    def forward(self, x):
-        # TODO: Forward pass
-        pass
-    
-    def predict(self, x, return_confidence=False, top_k=1):
-        # TODO: Make predictions with optional confidence scores and top-k results
-        pass
-
-
-def create_species_classifier(config):
-    '''
-    Create a species classifier from configuration.
-    
-    Args:
-        config: Dictionary with model configuration
+    def __init__(self, pretrained=True, freeze_backbone=False):
+        super().__init__()
         
-    Returns:
-        Configured SlugSpeciesClassifier
-    '''
-    # TODO: Parse config and create model
-    pass
-"""
+        weights = ViT_B_16_Weights.DEFAULT if pretrained else None
+        self.backbone = vit_b_16(weights=weights, progress=True)
+        
+
+    def forward(self, x):
+        return self.backbone(x)
+    
+    
+    
+model = SlugSpeciesClassifier()
+summary(model)
