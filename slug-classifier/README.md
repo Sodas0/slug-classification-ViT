@@ -12,10 +12,6 @@ This system implements a two-stage approach to slug classification:
 
 ```
 slug-classifier/
-├── api/                # API service for model deployment
-│   ├── __init__.py
-│   ├── app.py          # FastAPI/Flask application
-│   └── routes.py       # API endpoint definitions
 │
 ├── configs/            # Configuration files
 │   ├── binary_classifier.yaml

@@ -45,9 +45,9 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
-data/raw/*
-data/processed/*
-data/interim/*
+SLUGdata/raw/*
+SLUGdata/processed/*
+SLUGdata/interim/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/interim/.gitkeep

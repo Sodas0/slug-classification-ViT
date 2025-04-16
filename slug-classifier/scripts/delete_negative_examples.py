@@ -26,7 +26,7 @@ def delete_images_from_number(negative_dir, start_number):
     print(f'Total images deleted: {deleted_count}')
 
 def main():
-    negative_dir = 'slug-classifier/SLUGdata/interim/negative_examples'
+    negative_dir = 'slug-classifier/binaryDatainterim/negative_examples'
     start_number = 59000
     
     print(f'Deleting images from image_{start_number} onwards...')
