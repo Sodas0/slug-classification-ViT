@@ -342,12 +342,13 @@ def main():
     # TODO:
         # implement argparse for ease of use and configurability
     image_dir = r"C:\Users\soham\Desktop\slug-classification-ViT\slug-classifier\speciesDATA\positive_examples"
-    csv_file = r"C:\Users\soham\Desktop\slug-classification-ViT\slug-classifier\speciesDATA\raw\EVENMOREFILTEREDslug_data.csv"
+    csv_file = r"C:\Users\soham\Desktop\slug-classification-ViT\slug-classifier\speciesDATA\image_labels.csv"
     negative_dir = r"C:\Users\soham\Desktop\slug-classification-ViT\slug-classifier\speciesDATA\negative_examples"
     
     train_loader, val_loader, stats = create_slug_species_data_loaders(image_dir=image_dir,
                                                                     csv_file=csv_file,
                                                                     negative_dir=negative_dir,
+                                                                    max_samples=1500,
                                                                     batch_size=32,
                                                                     num_workers=1
                                                                     )
