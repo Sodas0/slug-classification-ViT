@@ -51,50 +51,119 @@ class INaturalistCSVGenerator:
             writer = csv.DictWriter(file, fieldnames=headers)
             writer.writeheader()
     
-    def is_slug(self, taxon):
-        """Check if a taxon is a slug based on its name"""
+    def is_actual_slug(self, taxon):
+        """
+        Multi-layered slug detection using taxonomic hierarchy and intelligent name filtering
+        """
         if not taxon:
             return False
         
-        # Check both scientific name and common name
+        # First check: Must be a mollusk for land slugs (most common case)
+        iconic_taxon = taxon.get('iconic_taxon_name', '').lower()
+        
+        # Get all text to analyze
         scientific_name = taxon.get('name', '').lower()
         common_name = taxon.get('preferred_common_name', '').lower()
+        all_names = f"{scientific_name} {common_name}"
         
-        # Exclude if either name contains 'slug'
-        return 'slug' in scientific_name or 'slug' in common_name
+        # Second check: Look for actual slug families in taxonomic hierarchy
+        slug_families = [
+            'limacidae',      # True slugs
+            'arionidae',      # Roundback slugs  
+            'philomycidae',   # Toothed slugs
+            'veronicellidae', # Leatherleaf slugs
+            'agriolimacidae', # Keeled slugs
+            'onchidiidae',    # Sea slugs
+            'pleurobranchidae', # Side-gill slugs
+        ]
+        
+        # Check ancestors for slug families
+        ancestor_names = []
+        if 'ancestors' in taxon:
+            ancestor_names = [ancestor.get('name', '').lower() for ancestor in taxon['ancestors']]
+        
+        # If we find slug families in taxonomy, it's definitely a slug
+        ancestor_text = ' '.join(ancestor_names)
+        if any(slug_family in ancestor_text for slug_family in slug_families):
+            return True
+        
+        # Third check: Intelligent name-based detection with exclusions
+        if 'slug' in all_names:
+            # Things that have 'slug' in name but aren't actually slugs
+            false_positives = [
+                'moth', 'butterfly', 'caterpillar', 'beetle', 'fly', 
+                'wasp', 'bee', 'spider', 'snake', 'lizard', 'fish',
+                'bird', 'frog', 'toad', 'salamander', 'newt',
+                'plant', 'flower', 'leaf', 'tree', 'grass'
+            ]
+            
+            # If it contains any false positive indicators, it's not a slug
+            if any(fp in all_names for fp in false_positives):
+                return False
+            
+            # Additional check: if it's a mollusk with 'slug' in name, likely a real slug
+            if iconic_taxon == 'mollusca':
+                return True
+            
+            # If 'slug' appears but no clear false positive, check context
+            slug_context_indicators = [
+                'gastropod', 'mollusk', 'mollusc', 'limacidae', 'arionidae',
+                'terrestrial', 'land', 'garden', 'shell-less'
+            ]
+            
+            if any(indicator in all_names or indicator in ancestor_text 
+                   for indicator in slug_context_indicators):
+                return True
+        
+        # Fourth check: Scientific name patterns for slugs
+        slug_genera = [
+            'limax', 'arion', 'deroceras', 'milax', 'lehmannia',
+            'tandonia', 'limacus', 'malacolimax'
+        ]
+        
+        if any(genus in scientific_name for genus in slug_genera):
+            return True
+        
+        return False
     
     def get_slug_taxon_ids(self):
         """Find taxon IDs for actual slugs to exclude them"""
-        search_url = f"{self.base_url}/taxa"
-        params = {
-            "q": "slug",
-            "per_page": 100
-        }
+        search_terms = ["slug", "limax", "arion", "deroceras"]  # Include scientific genera
         
-        logging.info("Finding slug taxon IDs to exclude...")
-        response = requests.get(search_url, params=params)
-        
-        if response.status_code == 200:
-            data = response.json()
-            for taxon in data.get("results", []):
-                if self.is_slug(taxon):
-                    self.slugs_taxon_ids.append(taxon["id"])
-                    
-                    # Also add parent taxon IDs to make sure we exclude the whole slug family
-                    if "ancestor_ids" in taxon:
-                        self.slugs_taxon_ids.extend(taxon["ancestor_ids"])
+        for term in search_terms:
+            search_url = f"{self.base_url}/taxa"
+            params = {
+                "q": term,
+                "per_page": 100
+            }
             
-            self.slugs_taxon_ids = list(set(self.slugs_taxon_ids))  # Remove duplicates
-            logging.info(f"Found {len(self.slugs_taxon_ids)} slug-related taxon IDs to exclude")
-        else:
-            logging.error(f"Failed to get slug taxon IDs: {response.status_code}")
+            logging.info(f"Finding slug taxon IDs for term '{term}'...")
+            response = requests.get(search_url, params=params)
+            
+            if response.status_code == 200:
+                data = response.json()
+                for taxon in data.get("results", []):
+                    if self.is_actual_slug(taxon):
+                        self.slugs_taxon_ids.append(taxon["id"])
+                        
+                        # Also add parent taxon IDs to make sure we exclude the whole slug family
+                        if "ancestor_ids" in taxon:
+                            self.slugs_taxon_ids.extend(taxon["ancestor_ids"])
+            else:
+                logging.error(f"Failed to get slug taxon IDs for '{term}': {response.status_code}")
+            
+            # Respect rate limits
+            time.sleep(1)
+        
+        self.slugs_taxon_ids = list(set(self.slugs_taxon_ids))  # Remove duplicates
+        logging.info(f"Found {len(self.slugs_taxon_ids)} slug-related taxon IDs to exclude")
     
     def find_similar_to_slugs(self):
         """Find taxon IDs similar to slugs but not actual slugs"""
         similar_terms = [
             "snail", "mollusk", "gastropod", "worm", "leech", 
             "planarian", "flatworm", "nudibranch", "caterpillar", 
-            "larva", "earthworm", "annelid"
+            "larva", "earthworm", "annelid", "sea slug"
         ]
         
         for term in similar_terms:
@@ -111,12 +180,12 @@ class INaturalistCSVGenerator:
                 data = response.json()
                 for taxon in data.get("results", []):
                     # Don't add if it's a slug or in the slug exclusion list
-                    if not self.is_slug(taxon) and taxon["id"] not in self.slugs_taxon_ids:
+                    if not self.is_actual_slug(taxon) and taxon["id"] not in self.slugs_taxon_ids:
                         self.similar_to_slugs_taxon_ids.append(taxon["id"])
             else:
                 logging.error(f"Failed to search for '{term}': {response.status_code}")
             
-            # Respect rate limits
+            # Rate limits
             time.sleep(1)
         
         self.similar_to_slugs_taxon_ids = list(set(self.similar_to_slugs_taxon_ids))
@@ -158,8 +227,8 @@ class INaturalistCSVGenerator:
                 for obs in data.get("results", []):
                     # Only include observations with photos and valid taxon
                     if 'photos' in obs and obs['photos'] and 'taxon' in obs:
-                        # Skip if it's a slug or has 'slug' in the name
-                        if self.is_slug(obs['taxon']) or obs['taxon']['id'] in self.slugs_taxon_ids:
+                        # Skip if it's a slug or has slug taxon ID
+                        if self.is_actual_slug(obs['taxon']) or obs['taxon']['id'] in self.slugs_taxon_ids:
                             continue
                         
                         # Make sure the image URL is available and points to a medium-sized image
@@ -360,8 +429,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate iNaturalist CSV file with image URLs')
     parser.add_argument('--output', '-o', default='inaturalist_data.csv', 
                         help='Output CSV file (default: inaturalist_data.csv)')
-    parser.add_argument('--count', '-c', type=int, default=30000,
-                        help='Number of observations to include (default: 30000)')
+    parser.add_argument('--count', '-c', type=int, default=500,
+                        help='Number of observations to include (default: 500)')
     
     args = parser.parse_args()
     

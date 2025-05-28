@@ -1,52 +1,40 @@
-#!/usr/bin/env python3
-"""
-Simple prediction script for the slug classification system.
-"""
-
-import argparse
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torchvision.models import mobilenet_v3_small, vit_l_16
+from torchvision import transforms
 from PIL import Image
-import torchvision.transforms as transforms
-import os
-import sys
-import json
-from pathlib import Path
-import matplotlib.pyplot as plt
+import torch.nn.functional as F
 
-# Binary Classifier
-class BinarySlugClassifier(nn.Module):
-    def __init__(self, pretrained=True, freeze_backbone=False, dropout_rate=0.2):
-        super().__init__()
-        self.backbone = mobilenet_v3_small(weights=None)
-        in_features = self.backbone.classifier[0].in_features
-        self.classifier = nn.Sequential(
-            nn.Linear(in_features, 1024),
-            nn.Hardswish(),
-            nn.Dropout(p=dropout_rate),
-            nn.Linear(1024, 1)
-        )
-        self.backbone.classifier = self.classifier
-    
-    def forward(self, x):
-        return self.backbone(x)
-    
-    def predict(self, x, return_confidence=False):
-        self.eval()
-        with torch.no_grad():
-            logits = self(x)
-            probabilities = torch.sigmoid(logits)
-            predictions = (probabilities > 0.5).float()
-            
-            if return_confidence:
-                return predictions.squeeze(), probabilities.squeeze()
-            return predictions.squeeze()
+# 1. Paste your class_names list here
+class_names = [
+    'african_banana_slug', 'ash-black_slug', 'black-spotted_semi-slug', 'black_slug', 'blue-margin_headshield_slug', 
+    'brown_leatherback_slug', 'brown_slug', 'budapest_slug', 'buttons_banana_slug', 'california_banana_slug', 
+    'caribbean_leatherleaf_slug', 'carpathian_blue_slug', 'celtic_sea_slug', 'chestnut_slug', 'chinese_slug', 
+    'common_slug-eater', 'conemenos_slug', 'cratena_slug', 'crimson_foot_semi-slug', 'cuban_leaf_slug', 
+    'earshell_slug', 'faithful_sea_slug', 'florida_leatherleaf_slug', 'green_cellar_slug', 'greenhouse_slug', 
+    'grey_side-gilled_sea_slug', 'harold_dundees_leatherback_slug', 'headband_headshield_slug', 'hedgehog_slug',
+     'hills_side-gill_slug', 'humped_ancula_sea_slug', 'iridescent_semi-slug', 'kerry_slug', 'kirks_tailed_slug', 
+     'leathery_sea_slug', 'lemon_slug', 'leopard_sea_slug', 'leopard_slug', 'lettuce_sea_slug', 'lovely_headshield_slug',
+      'meadow_slug', 'milky_slug', 'northern_dusky_slug', 'orange-clubbed_sea_slug', 'orange-edged_sapsucking_slug', 
+      'pacific_banana_slug', 'pilsbrys_head_shield_slug', 'puerto_rican_semi-slug', 'pustulose_wart_slug', 'pyjama_slug', 
+      'red_triangle_slug', 'ringed_sap-sucking_slug', 'sap-sucking_slug', 'slender_banana_slug', 'slender_sap_sucking_slug',
+       'southern_pacific_banana_slug', 'spanish_slug', 'spotted_white_sea_slug', 'striped_garden_slug', 
+       'striped_greenhouse_slug', 'swallowtail_headshield_slug', 'tree_slug', 'tropical_leatherleaf_slug', 
+       'umbrella_slug', 'varicose_wart_slug', 'vine_slug', 'warty_slug', 'western_dusky_slug', 
+       'white-speckled_headshield_slug', 'yellow-shelled_semi-slug', 'yellow_cellar_slug', 'yellow_umbrella_slug',
+        'yellow_umbrella_slug_tylodina_perversa', 'unsure_lol'
+]
 
-# Species Classifier
+# 2. Load your model checkpoint
+checkpoint_path = r'C:\Users\soham\Desktop\slug-classification-ViT\slug-classifier\models\species\checkpoints\vit_slug_classifier_20250429_011357\final_model.pth'  # Update if needed
+checkpoint = torch.load(checkpoint_path, map_location='cpu')
+config = checkpoint['config']
+num_classes = config['num_classes']
+
+# 3. Define your model (copy the SlugSpeciesClassifier from transformer.py)
+from torchvision.models import vit_l_16
+
+import torch.nn as nn
 class SlugSpeciesClassifier(nn.Module):
-    def __init__(self, num_classes=1200, dropout_rate=0.2):
+    def __init__(self, num_classes=74, dropout_rate=0.2):
         super().__init__()
         self.backbone = vit_l_16(weights=None)
         in_features = self.backbone.heads.head.in_features
@@ -56,179 +44,39 @@ class SlugSpeciesClassifier(nn.Module):
             nn.Dropout(dropout_rate),
             nn.Linear(512, num_classes)
         )
-
     def forward(self, x):
         return self.backbone(x)
-    
-    def predict(self, x, top_k=3):
-        self.eval()
-        with torch.no_grad():
-            logits = self(x)
-            probabilities = F.softmax(logits, dim=1)
-            top_k_confidences, top_k_indices = torch.topk(probabilities, k=top_k, dim=1)
-            return top_k_indices, top_k_confidences
 
-def load_model(model_path, model_class, device, **kwargs):
-    """Simple function to load a model from a .pth file"""
-    model = model_class(**kwargs)
-    checkpoint = torch.load(model_path, map_location=device)
-    
-    # Handle different checkpoint formats
-    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-        model.load_state_dict(checkpoint['model_state_dict'])
-    elif isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
-        model.load_state_dict(checkpoint['state_dict']) 
+# 4. Instantiate and load weights
+model = SlugSpeciesClassifier(num_classes=num_classes, dropout_rate=config.get('dropout_rate', 0.2))
+model.load_state_dict(checkpoint['model_state_dict'])
+model.eval()
+
+# 5. Preprocess your image
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
+
+img_path = r'C:\Users\soham\Desktop\slug-classification-ViT\mysterySlug.png'  # <-- Set your image path here
+image = Image.open(img_path).convert('RGB')
+input_tensor = transform(image).unsqueeze(0)  # Add batch dimension
+
+# 6. Run prediction
+with torch.no_grad():
+    logits = model(input_tensor)
+    probabilities = F.softmax(logits, dim=1)
+    topk_probs, topk_indices = torch.topk(probabilities, k=3, dim=1)
+
+# 7. Print results
+threshold = 0.6  # 60% threshold for top-1 prediction
+
+for i in range(topk_indices.size(1)):
+    idx = topk_indices[0, i].item()
+    prob = topk_probs[0, i].item()
+    # For the top-1 prediction, apply the threshold
+    if i == 0 and prob < threshold:
+        print(f"Prediction {i+1}: unsure_lol (confidence: {prob:.2%} < threshold)")
     else:
-        # Try direct loading
-        try:
-            model.load_state_dict(checkpoint)
-        except:
-            print(f"Warning: Could not load checkpoint directly, trying to adapt keys")
-            # If it's a full model saved with torch.save(model)
-            if hasattr(checkpoint, 'state_dict'):
-                model.load_state_dict(checkpoint.state_dict())
-    
-    model.to(device)
-    model.eval()
-    return model
-
-def preprocess_image(image_path):
-    """Load and preprocess an image for model inference"""
-    image = Image.open(image_path).convert('RGB')
-    preprocess = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-    return preprocess(image).unsqueeze(0)  # Add batch dimension
-
-def predict_image(image_path, binary_model, species_model, device, class_mapping=None, threshold=0.5, top_k=3):
-    """Run the prediction pipeline on a single image"""
-    # Preprocess the image
-    image_tensor = preprocess_image(image_path).to(device)
-    
-    # Binary classification
-    is_slug, slug_confidence = binary_model.predict(image_tensor, return_confidence=True)
-    slug_confidence = float(slug_confidence.cpu().item())
-    
-    result = {
-        "image_path": str(image_path),
-        "is_slug": bool(slug_confidence >= threshold),
-        "slug_confidence": slug_confidence,
-        "species_predictions": []
-    }
-    
-    # If it's a slug, predict species
-    if result["is_slug"]:
-        indices, confidences = species_model.predict(image_tensor, top_k=top_k)
-        
-        # Convert to Python types
-        indices = indices.cpu().numpy().tolist()[0]
-        confidences = confidences.cpu().numpy().tolist()[0]
-        
-        # Add species predictions
-        for idx, conf in zip(indices, confidences):
-            species_name = class_mapping.get(str(idx), f"species_{idx}") if class_mapping else f"species_{idx}"
-            result["species_predictions"].append({
-                "species_id": idx,
-                "species_name": species_name,
-                "confidence": conf
-            })
-    
-    return result
-
-def visualize_prediction(image_path, result, show=True, save_path=None):
-    """Visualize prediction results"""
-    image = Image.open(image_path).convert('RGB')
-    plt.figure(figsize=(10, 8))
-    plt.imshow(image)
-    plt.axis('off')
-    
-    # Create caption text
-    info = f"Slug: {result['is_slug']} ({result['slug_confidence']:.2f})"
-    
-    if result['is_slug'] and result['species_predictions']:
-        for i, pred in enumerate(result['species_predictions']):
-            info += f"\n{i+1}. {pred['species_name']} ({pred['confidence']:.2f})"
-    
-    plt.title(info, fontsize=12)
-    
-    if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
-    
-    if show:
-        plt.show()
-    
-    plt.close()
-
-def main():
-    # Parse command-line arguments
-    parser = argparse.ArgumentParser(description='Slug classification prediction')
-    parser.add_argument('--image', type=str, required=True, help='Path to image file')
-    parser.add_argument('--binary_model', type=str, required=True, help='Path to binary model .pth file')
-    parser.add_argument('--species_model', type=str, required=True, help='Path to species model .pth file')
-    parser.add_argument('--class_mapping', type=str, help='Path to class mapping JSON file')
-    parser.add_argument('--num_classes', type=int, default=1200, help='Number of species classes')
-    parser.add_argument('--threshold', type=float, default=0.5, help='Confidence threshold')
-    parser.add_argument('--top_k', type=int, default=3, help='Number of species predictions')
-    parser.add_argument('--visualize', action='store_true', help='Show prediction visualization')
-    parser.add_argument('--output', type=str, help='Path to save results JSON')
-    args = parser.parse_args()
-    
-    # Check if image exists
-    if not os.path.exists(args.image):
-        print(f"Error: Image file not found: {args.image}")
-        return
-    
-    # Set device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
-    
-    # Load models
-    try:
-        print(f"Loading binary model from {args.binary_model}")
-        binary_model = load_model(args.binary_model, BinarySlugClassifier, device)
-        
-        print(f"Loading species model from {args.species_model}")
-        species_model = load_model(args.species_model, SlugSpeciesClassifier, 
-                                  device, num_classes=args.num_classes)
-        
-        # Load class mapping if provided
-        class_mapping = None
-        if args.class_mapping and os.path.exists(args.class_mapping):
-            with open(args.class_mapping, 'r') as f:
-                class_mapping = json.load(f)
-                print(f"Loaded class mapping with {len(class_mapping)} classes")
-    
-    except Exception as e:
-        print(f"Error loading models: {e}")
-        return
-    
-    # Run prediction
-    result = predict_image(
-        args.image, binary_model, species_model, device,
-        class_mapping, args.threshold, args.top_k
-    )
-    
-    # Print and save results
-    print("\nPrediction Results:")
-    print(f"Image: {result['image_path']}")
-    print(f"Is Slug: {result['is_slug']} (Confidence: {result['slug_confidence']:.4f})")
-    
-    if result['is_slug'] and result['species_predictions']:
-        print("Species Predictions:")
-        for i, pred in enumerate(result['species_predictions'], 1):
-            print(f"  {i}. {pred['species_name']} (Confidence: {pred['confidence']:.4f})")
-    
-    # Save results if output specified
-    if args.output:
-        with open(args.output, 'w') as f:
-            json.dump(result, f, indent=2)
-        print(f"\nResults saved to {args.output}")
-    
-    # Visualize if requested
-    if args.visualize:
-        visualize_prediction(args.image, result)
-
-if __name__ == '__main__':
-    main()
+        print(f"Prediction {i+1}: {class_names[idx]} (confidence: {prob:.2%})")

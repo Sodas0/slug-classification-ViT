@@ -18,6 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision.models import vit_b_16, ViT_B_16_Weights
+from torchvision.models import vit_l_16, ViT_L_16_Weights
 from tqdm import tqdm
 import numpy as np
 import sys
@@ -30,32 +31,23 @@ import matplotlib.pyplot as plt
 
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
-from speciesDATA.species_dataset import create_slug_species_data_loaders
-
-# TODO: (order doesn't matter, just needs to get done)
-    # create more organized and robust dataset and this time, include a sh script for
-        # dataset download []
-    # dataset analysis to count number of classes and images/class for research [x]
-    # script for dataloader should be able to configure #imgs/class [x]
-    # import and freeze vit_b_16 or vit_b_32 [x]
-    # example pass of fake data in expected shape [x]
-    # clean up repo -> organize data [x]
-    # create script for entire build process []
-    # save the index to class name mapp
-    # etc. will write more as tasks get done based on needs.
+from speciesDATA.transformer_dataset import create_slug_species_data_loaders
         
 class SlugSpeciesClassifier(nn.Module):
     '''
     Species classifier to identify species of slugs.
     
-    Uses ViT-B/16.
+    Able to use vit_b_16, vit_b_32, and vit_l_16.
     '''
     
     def __init__(self, pretrained=True, num_classes=1200, freeze_backbone=True, dropout_rate=0.2):
         super(SlugSpeciesClassifier, self).__init__()
         
-        weights = ViT_B_16_Weights.DEFAULT if pretrained else None
-        self.backbone = vit_b_16(weights=weights, progress=True)
+        # weights = ViT_B_16_Weights.DEFAULT if pretrained else None
+        # self.backbone = vit_b_16(weights=weights, progress=True)
+        
+        weights = ViT_L_16_Weights.DEFAULT if pretrained else None
+        self.backbone = vit_l_16(weights=weights, progress=True)
         
         in_features = self.backbone.heads.head.in_features
         
@@ -300,7 +292,7 @@ def train_species_classifier(model, train_loader, val_loader, criterion, optimiz
             'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
             'history': history,
         }, latest_checkpoint_path)
-    
+
     
     plot_training_history(history)
     
@@ -348,7 +340,7 @@ def main():
     train_loader, val_loader, stats = create_slug_species_data_loaders(image_dir=image_dir,
                                                                     csv_file=csv_file,
                                                                     negative_dir=negative_dir,
-                                                                    max_samples=1500,
+                                                                    max_samples=3000,
                                                                     batch_size=32,
                                                                     num_workers=1
                                                                     )
@@ -365,7 +357,7 @@ def main():
         'learning_rate': 1e-4,
         'num_classes': num_classes,
         'batch_size': 32,
-        'num_epochs': 10,
+        'num_epochs': 25,
         'img_size': 224
     }
 

@@ -93,10 +93,10 @@ def copy_and_rename_images(source_dir, target_dir, start_number):
     print(f'Completed copying {processed_count}/{total_images} images from {source_dir}')
 
 def main():
-    negative_dir = r'C:\Users\soham\Desktop\slug-classification-ViT\slug-classifier\data\interim\negative_examples'
+    negative_dir = r'C:\Users\soham\Desktop\slug-classification-ViT\slug-classifier\speciesDATA\negative_examples'
     #'slug-classifier/binaryDatainterim/negative_examples'  #MACBOOK
     
-    imagenette_dir = r'C:\Users\soham\Desktop\slug-classification-ViT\slug-classifier\data\raw\imagenette2-320'
+    imagenette_dir = r'C:\Users\soham\Desktop\slug-classification-ViT\slug-classifier\speciesDATA\raw\imagenette2-320'
     #'slug-classifier/binaryDataraw/imagenette2-320'  #MACBOOK
     
     print(f"Checking if directories exist:")

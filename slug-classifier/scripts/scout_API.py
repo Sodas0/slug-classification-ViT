@@ -34,7 +34,7 @@ def is_actual_slug(taxon_name, description):
             return True
     return False
 
-def get_slug_species_data(min_image_count=200):
+def get_slug_species_data(min_image_count=100):
     """
     Get statistics on slug species from iNaturalist with a minimum number of images.
     
