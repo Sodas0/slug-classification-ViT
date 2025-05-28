@@ -1,3 +1,8 @@
+'''
+augment_images.py: The purpose of this module is to increase the number of training examples through common image augmentation techniques.
+
+For a specified directory, creates a specified number of augments per image.
+'''
 import os
 import csv
 import argparse
