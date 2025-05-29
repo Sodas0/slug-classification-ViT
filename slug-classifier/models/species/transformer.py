@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
-from speciesDATA.transformer_dataset import create_slug_species_data_loaders
+from speciesDATA.dataloader_files.transformer_dataset import create_slug_species_data_loaders
         
 class SlugSpeciesClassifier(nn.Module):
     '''
