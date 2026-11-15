@@ -1,20 +1,25 @@
 # Python
 __pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
 
-# OS specific
+# OS
 .DS_Store
 
-# Dataset files
-data/MNIST
-SLUGdata/
-**/speciesDATA
-
-# Trained models
+# Data, model artifacts, run outputs (never committed)
+slug-classifier/data/
 *.pt
 *.pth
+*.onnx
+wandb/
+*.log
 
-#Checkpoints
-**/checkpoints
+# Legacy local-only files from v1
+slug-classifier/speciesDATA/
+slug-classifier/models/
+slug-classifier/logs/
 
-# IDE specific filess
+# IDE
 .vscode/
