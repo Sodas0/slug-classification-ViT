@@ -1,0 +1,60 @@
+# Dataset definition for the iNaturalist Open Data metadata snapshot.
+# Clades are matched by exact iNat taxon name (or integer taxon_id if a name is ambiguous).
+# The build fails loudly if any name doesn't resolve, so check this list against taxa.csv.
+
+slug_clades:
+  # land slugs
+  - Arionidae
+  - Limacidae
+  - Agriolimacidae
+  - Milacidae
+  - Boettgerillidae
+  - Philomycidae
+  - Veronicellidae
+  - Ariolimacidae
+  - Testacellidae
+  - Trigonochlamydidae
+  - Parmacellidae
+  - Athoracophoridae
+  - Onchidiidae
+  # sea slugs
+  - Nudibranchia
+  - Cephalaspidea
+  - Sacoglossa
+  - Pleurobranchida
+  - Umbraculida
+
+# Hard negatives, all labeled "other" and trained on.
+other_clades:
+  - Helicidae
+  - Polygyridae
+  - Hygromiidae
+  - Camaenidae
+  - Achatinidae
+  - Oxychilidae
+  - Littorinidae
+  - Aplysiida      # sea hares: treated as not-slug
+  - Hirudinea      # leeches
+  - Geoplanidae    # land planarians
+  - Polycladida    # marine flatworms (nudibranch look-alikes)
+  - Limacodidae    # slug moth caterpillars
+
+# Never trained on; held out to calibrate the "not a slug" threshold.
+unseen_negative_clades:
+  - Lumbricidae
+  - Diplopoda
+  - Anura
+
+# Species that can't be told apart from photos are merged into one label.
+merge_groups:
+  - label: Arion ater agg.
+    members: [Arion ater, Arion rufus, Arion vulgaris]
+
+quality_grades: [research]
+licenses: [CC0, CC-BY, CC-BY-NC, CC-BY-SA, CC-BY-NC-SA, CC-BY-ND, CC-BY-NC-ND]
+min_observations: 100     # per slug label, after filtering
+max_images_per_class: 3000
+max_images_other: 15000   # applies to "other" and "ood"
+photo_size: medium        # medium = 500px max side
+n_folds: 10               # fold 0 = test, fold 1 = val, rest = train
+seed: 42
