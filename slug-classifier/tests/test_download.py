@@ -64,6 +64,14 @@ def test_download_skips_missing_and_invalid_and_resumes(tmp_path):
     assert "u/1" not in session.calls
 
 
+def test_repeated_photo_fetched_once(tmp_path):
+    m = _manifest([("1", "jpg", "u/1", "train"), ("1", "jpg", "u/1", "test")])
+    session = FakeSession({"u/1": FakeResponse(_jpeg(1))})
+    present = download(m, tmp_path, session, workers=2)
+    assert present.tolist() == [True, True]
+    assert session.calls == ["u/1"]
+
+
 def test_duplicates_kept_only_in_highest_priority_split(tmp_path):
     same, other = _jpeg(1), _jpeg(5)
     m = _manifest(

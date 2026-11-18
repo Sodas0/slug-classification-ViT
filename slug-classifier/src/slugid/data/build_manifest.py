@@ -161,6 +161,12 @@ def load_photos(con, metadata_dir: Path, labeled: pd.DataFrame, cfg: dict) -> pd
     return photos
 
 
+def drop_shared_photos(photos: pd.DataFrame) -> pd.DataFrame:
+    """Drop photos attached to more than one observation (ambiguous labels, split leakage)."""
+    n_obs = photos.groupby("photo_id")["observation_uuid"].transform("nunique")
+    return photos[n_obs == 1].reset_index(drop=True)
+
+
 def select(photos: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     """Drop slug labels with too few photos and cap images per label, favouring distinct obs."""
     n_photos = photos[photos["group"] == "slug"].groupby("label").size()
@@ -200,7 +206,8 @@ def build(metadata_dir: Path, cfg: dict) -> pd.DataFrame:
     con = duckdb.connect()
     taxa = load_taxa(con, metadata_dir)
     labeled = label_taxa(taxa, cfg)
-    photos = assign_splits(select(load_photos(con, metadata_dir, labeled, cfg), cfg), cfg)
+    photos = drop_shared_photos(load_photos(con, metadata_dir, labeled, cfg))
+    photos = assign_splits(select(photos, cfg), cfg)
     photos["url"] = [
         PHOTO_URL.format(photo_id=p, size=cfg["photo_size"], ext=e)
         for p, e in zip(photos["photo_id"], photos["extension"], strict=True)

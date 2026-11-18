@@ -67,11 +67,13 @@ def download(manifest: pd.DataFrame, image_dir: Path, session, workers: int) -> 
     """Download every row's image. Returns a boolean Series: file present."""
     image_dir.mkdir(parents=True, exist_ok=True)
     paths = [image_path(image_dir, r) for r in manifest.itertuples()]
+    # Fetch each file once: concurrent writes to the same .part file would race.
+    jobs = dict(zip(paths, manifest["url"], strict=True))
     with ThreadPoolExecutor(workers) as pool:
-        jobs = zip(manifest["url"], paths, strict=True)
-        results = pool.map(lambda a: fetch(session, *a), jobs)
-        ok = list(tqdm(results, total=len(paths), desc="download", unit="img", mininterval=5))
-    return pd.Series(ok, index=manifest.index)
+        results = pool.map(lambda pu: fetch(session, pu[1], pu[0]), jobs.items())
+        done = list(tqdm(results, total=len(jobs), desc="download", unit="img", mininterval=5))
+    ok = dict(zip(jobs, done, strict=True))
+    return pd.Series([ok[p] for p in paths], index=manifest.index)
 
 
 def phash(path: Path) -> str:

@@ -1,8 +1,14 @@
 import gzip
 
+import pandas as pd
 import pytest
 
-from slugid.data.build_manifest import build, normalize_quality, parse_ancestry
+from slugid.data.build_manifest import (
+    build,
+    drop_shared_photos,
+    normalize_quality,
+    parse_ancestry,
+)
 
 # taxon_id, parent_id, rank, rank_level, name
 TREE = [
@@ -189,3 +195,10 @@ def test_normalize_quality():
 
     s = pd.Series(["Research Grade", "research", "Needs ID", "needs_id", "Casual"])
     assert list(normalize_quality(s)) == ["research", "research", "needs_id", "needs_id", "casual"]
+
+
+def test_photo_shared_across_observations_dropped():
+    photos = pd.DataFrame(
+        {"photo_id": ["1", "1", "2", "3", "3"], "observation_uuid": ["a", "b", "c", "d", "d"]}
+    )
+    assert drop_shared_photos(photos)["photo_id"].tolist() == ["2", "3", "3"]
