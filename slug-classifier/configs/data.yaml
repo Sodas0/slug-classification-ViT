@@ -51,7 +51,7 @@ merge_groups:
     members: [Arion ater, Arion rufus, Arion vulgaris]
 
 quality_grades: [research]
-licenses: [CC0, CC-BY, CC-BY-NC, CC-BY-SA, CC-BY-NC-SA, CC-BY-ND, CC-BY-NC-ND]
+# licenses: [CC0, CC-BY]  # optional filter; omitted = keep all licenses (private project)
 min_observations: 100     # per slug label, after filtering
 max_images_per_class: 3000
 max_images_other: 15000   # applies to "other" and "ood"

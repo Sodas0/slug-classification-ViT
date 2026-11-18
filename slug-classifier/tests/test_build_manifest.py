@@ -132,6 +132,12 @@ def test_quality_and_license_filters(metadata_dir):
     assert set(m["license"]) == {"CC-BY"}
 
 
+def test_no_license_filter_keeps_all_licenses(metadata_dir):
+    cfg = {k: v for k, v in CFG.items() if k != "licenses"}
+    m = build(metadata_dir, cfg)
+    assert {"CC-BY", "CC-BY-ND"} <= set(m["license"])
+
+
 def test_no_observer_shared_between_splits(metadata_dir):
     m = build(metadata_dir, CFG)
     observers = {s: set(g["observer_id"]) for s, g in m.groupby("split")}

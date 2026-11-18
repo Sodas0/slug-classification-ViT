@@ -134,7 +134,7 @@ def load_taxa(con, metadata_dir: Path) -> pd.DataFrame:
 
 
 def load_photos(con, metadata_dir: Path, labeled: pd.DataFrame, cfg: dict) -> pd.DataFrame:
-    """Join labeled taxa -> observations -> photos and apply quality/license filters."""
+    """Join labeled taxa -> observations -> photos; filter by quality and optional license."""
     con.register("labeled", labeled)
     obs = con.execute(
         f"select o.observation_uuid, o.observer_id, "
@@ -147,12 +147,16 @@ def load_photos(con, metadata_dir: Path, labeled: pd.DataFrame, cfg: dict) -> pd
     obs = obs.drop(columns="quality_grade")
 
     con.register("obs", obs)
-    allowed = ", ".join(f"'{lic.upper()}'" for lic in cfg["licenses"])
+    # No `licenses` key means keep every license; the license column is recorded either way.
+    where = ""
+    if cfg.get("licenses"):
+        allowed = ", ".join(f"'{lic.upper()}'" for lic in cfg["licenses"])
+        where = f"where upper(p.license) in ({allowed})"
     photos = con.execute(
         f"select p.photo_id, p.extension, upper(p.license) as license, "
         f"try_cast(p.position as integer) as position, obs.* "
         f"from {_source(con, metadata_dir, 'photos')} p join obs using (observation_uuid) "
-        f"where upper(p.license) in ({allowed})"
+        f"{where}"
     ).df()
     return photos
 
