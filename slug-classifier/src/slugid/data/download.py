@@ -19,6 +19,7 @@ import pandas as pd
 import requests
 from PIL import Image
 from requests.adapters import HTTPAdapter
+from tqdm import tqdm
 from urllib3.util.retry import Retry
 
 SPLIT_PRIORITY = ["train", "val", "test", "ood"]
@@ -68,7 +69,8 @@ def download(manifest: pd.DataFrame, image_dir: Path, session, workers: int) -> 
     paths = [image_path(image_dir, r) for r in manifest.itertuples()]
     with ThreadPoolExecutor(workers) as pool:
         jobs = zip(manifest["url"], paths, strict=True)
-        ok = list(pool.map(lambda a: fetch(session, *a), jobs))
+        results = pool.map(lambda a: fetch(session, *a), jobs)
+        ok = list(tqdm(results, total=len(paths), desc="download", unit="img", mininterval=5))
     return pd.Series(ok, index=manifest.index)
 
 
@@ -92,7 +94,8 @@ def clean(manifest: pd.DataFrame, image_dir: Path, present: pd.Series, workers: 
     kept = manifest[present]
     paths = [image_path(image_dir, r) for r in kept.itertuples()]
     with ThreadPoolExecutor(workers) as pool:
-        hashes = pd.Series(list(pool.map(phash, paths)), index=kept.index)
+        results = tqdm(pool.map(phash, paths), total=len(paths), desc="phash", mininterval=5)
+        hashes = pd.Series(list(results), index=kept.index)
     return drop_duplicates(kept, hashes)
 
 
