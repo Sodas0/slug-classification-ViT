@@ -48,11 +48,12 @@ unseen_negative_clades:
 # Species that can't be told apart from photos are merged into one label.
 merge_groups:
   - label: Arion ater agg.
-    members: [Arion ater, Arion rufus, Arion vulgaris]
+    # iNat now treats A. rufus as subspecies A. ater rufus, so it rolls up into A. ater.
+    members: [Arion ater, Arion vulgaris]
 
 quality_grades: [research]
 # licenses: [CC0, CC-BY]  # optional filter; omitted = keep all licenses (private project)
-min_observations: 100     # per slug label, after filtering
+min_photos: 1000          # per slug label, after filtering and merging (keeps >=20 val/test each)
 max_images_per_class: 3000
 max_images_other: 15000   # applies to "other" and "ood"
 photo_size: medium        # medium = 500px max side

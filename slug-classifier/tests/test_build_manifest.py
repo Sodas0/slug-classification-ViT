@@ -33,7 +33,7 @@ CFG = {
     "merge_groups": [{"label": "Arion ater agg.", "members": ["Arion ater", "Arion rufus"]}],
     "quality_grades": ["research"],
     "licenses": ["CC0", "CC-BY"],
-    "min_observations": 5,
+    "min_photos": 5,
     "max_images_per_class": 40,
     "max_images_other": 40,
     "photo_size": "medium",
@@ -118,7 +118,7 @@ def metadata_dir(tmp_path):
 def test_labels_merge_rollup_and_rare_class_drop(metadata_dir):
     m = build(metadata_dir, CFG)
     slugs = m[m["group"] == "slug"]
-    # Arion ater, A. rufus and the A. ater subspecies merge; Limax cinereoniger (3 obs) drops.
+    # Arion ater, A. rufus and the A. ater subspecies merge; Limax cinereoniger (3 photos) drops.
     assert set(slugs["label"]) == {"Arion ater agg.", "Limax maximus"}
     assert (slugs["label"] == "Arion ater agg.").sum() == 40  # 15+15+10
     assert set(m.loc[m["group"] == "other", "label"]) == {"other"}
@@ -130,6 +130,15 @@ def test_quality_and_license_filters(metadata_dir):
     m = build(metadata_dir, CFG)
     assert not m["observation_uuid"].str.endswith("casual").any()
     assert set(m["license"]) == {"CC-BY"}
+
+
+def test_min_photos_counts_photos_not_observations(metadata_dir):
+    # Without the license filter, L. cinereoniger has 6 photos from only 3 observations.
+    cfg = {k: v for k, v in CFG.items() if k != "licenses"}
+    m = build(metadata_dir, cfg)
+    assert (m["label"] == "Limax cinereoniger").sum() == 6
+    m = build(metadata_dir, {**cfg, "min_photos": 7})
+    assert "Limax cinereoniger" not in set(m["label"])
 
 
 def test_no_license_filter_keeps_all_licenses(metadata_dir):

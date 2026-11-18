@@ -162,9 +162,9 @@ def load_photos(con, metadata_dir: Path, labeled: pd.DataFrame, cfg: dict) -> pd
 
 
 def select(photos: pd.DataFrame, cfg: dict) -> pd.DataFrame:
-    """Drop rare slug labels and cap images per label, favouring distinct observations."""
-    n_obs = photos[photos["group"] == "slug"].groupby("label")["observation_uuid"].nunique()
-    rare = set(n_obs[n_obs < cfg["min_observations"]].index)
+    """Drop slug labels with too few photos and cap images per label, favouring distinct obs."""
+    n_photos = photos[photos["group"] == "slug"].groupby("label").size()
+    rare = set(n_photos[n_photos < cfg["min_photos"]].index)
     photos = photos[~photos["label"].isin(rare)]
 
     # Deterministic shuffle, then prefer each observation's first photo before extra ones.
