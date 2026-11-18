@@ -1,0 +1,16 @@
+# Full fine-tune of the BioCLIP ViT-B/16 vision tower with species/genus/family heads.
+backbone: bioclip
+img_size: 224
+epochs: 20
+batch_size: 256
+num_workers: null         # null = all CPUs available to the job
+lr: 2.0e-4                # head LR; earlier layers get lr * layer_decay^depth
+layer_decay: 0.65
+weight_decay: 0.05
+warmup_epochs: 1
+label_smoothing: 0.1
+logit_adjust_tau: 1.0     # 0 disables logit adjustment
+level_weights: {species: 1.0, genus: 0.5, family: 0.25}
+ema_decay: 0.9998
+grad_clip: 1.0
+seed: 42
