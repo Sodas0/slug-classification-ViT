@@ -84,7 +84,9 @@ jobs:
           URL=$(aws cloudformation describe-stacks --stack-name slugid-app \
             --query "Stacks[0].Outputs[?OutputKey=='FunctionUrl'].OutputValue" --output text)
           echo "Function URL: $URL" >> "$GITHUB_STEP_SUMMARY"
+          aws lambda wait function-updated --function-name slugid
           curl -sf --max-time 90 "${URL}health"
-          curl -sf --max-time 30 "$URL" | grep -q "Slug Identifier"
+          # Save then grep: piping into grep -q makes curl hit a broken pipe, which pipefail fails.
+          curl -sf --max-time 30 -o page.html "$URL" && grep -q "Slug Identifier" page.html
           curl -sf --max-time 90 -H 'content-type: image/jpeg' \
             --data-binary @assets/hexabranchus_lacer.jpg "$URL" | tee -a "$GITHUB_STEP_SUMMARY"
