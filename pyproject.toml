@@ -22,10 +22,14 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
-train = ["open_clip_torch>=2.24", "torch>=2.2", "torchvision>=0.17"]
+train = ["onnx>=1.16", "open_clip_torch>=2.24", "torch>=2.2", "torchvision>=0.17"]
+serve = ["onnxruntime>=1.20"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+slugid = ["index.html"]
 
 [tool.ruff]
 line-length = 100
