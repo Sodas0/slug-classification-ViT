@@ -1,0 +1,5 @@
+*
+!model/
+!src/slugid/__init__.py
+!src/slugid/serve.py
+!src/slugid/index.html

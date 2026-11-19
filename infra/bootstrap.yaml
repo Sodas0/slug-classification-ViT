@@ -1,0 +1,251 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  slugid one-time setup: model + log buckets, ECR repo, GitHub OIDC deploy role,
+  Lambda execution role, Athena table over prediction logs, and a cost budget.
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: Sodas0/slug-classification-ViT
+  BudgetEmail:
+    Type: String
+    Description: Where budget alerts go.
+  MonthlyBudgetUsd:
+    Type: Number
+    Default: 5
+  CreateOidcProvider:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: Set false if the account already has the GitHub OIDC provider.
+
+Conditions:
+  MakeOidc: !Equals [!Ref CreateOidcProvider, "true"]
+
+Resources:
+  ModelBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub slugid-models-${AWS::AccountId}-${AWS::Region}
+      VersioningConfiguration: { Status: Enabled }
+
+  LogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub slugid-logs-${AWS::AccountId}-${AWS::Region}
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-athena-results
+            Prefix: athena-results/
+            Status: Enabled
+            ExpirationInDays: 7
+
+  Repository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: slugid
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {"rules": [{"rulePriority": 1, "description": "keep last 5 images",
+            "selection": {"tagStatus": "any", "countType": "imageCountMoreThan", "countNumber": 5},
+            "action": {"type": "expire"}}]}
+      RepositoryPolicyText:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: LambdaPull
+            Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: [ecr:BatchGetImage, ecr:GetDownloadUrlForLayer]
+
+  GitHubOidc:
+    Type: AWS::IAM::OIDCProvider
+    Condition: MakeOidc
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      ThumbprintList: [6938fd4d98bab03faadb97b34396831e3780aea1, 1c58a3a8518e8759bf075b76b750d4f2df264fcd]
+
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: write-prediction-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub ${LogBucket.Arn}/predictions/*
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepo}:ref:refs/heads/main
+      Policies:
+        - PolicyName: deploy-slugid
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [ecr:GetAuthorizationToken, cloudformation:DescribeStacks,
+                         cloudformation:GetTemplateSummary, cloudformation:ValidateTemplate,
+                         logs:DescribeLogGroups]
+                Resource: "*"
+              - Effect: Allow
+                Action: [ecr:BatchCheckLayerAvailability, ecr:InitiateLayerUpload,
+                         ecr:UploadLayerPart, ecr:CompleteLayerUpload, ecr:PutImage,
+                         ecr:BatchGetImage, ecr:GetDownloadUrlForLayer]
+                Resource: !GetAtt Repository.Arn
+              - Effect: Allow
+                Action: [s3:GetObject, s3:ListBucket]
+                Resource: [!GetAtt ModelBucket.Arn, !Sub "${ModelBucket.Arn}/*"]
+              - Effect: Allow
+                Action: cloudformation:*
+                Resource: !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/slugid-app/*
+              - Effect: Allow
+                Action: lambda:*
+                Resource: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:slugid*
+              - Effect: Allow
+                Action: logs:*
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/slugid*
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt ExecutionRole.Arn
+
+  # Analytics: prediction logs are queryable with SQL in Athena. Partition projection on dt
+  # means no crawler and no MSCK REPAIR; new days show up automatically.
+  Database:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput: { Name: slugid }
+
+  PredictionsTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref Database
+      TableInput:
+        Name: predictions
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: json
+          projection.enabled: "true"
+          projection.dt.type: date
+          projection.dt.format: yyyy-MM-dd
+          projection.dt.range: 2026-01-01,NOW
+          storage.location.template: !Sub s3://${LogBucket}/predictions/dt=${!dt}/
+        PartitionKeys:
+          - { Name: dt, Type: string }
+        StorageDescriptor:
+          Location: !Sub s3://${LogBucket}/predictions/
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.openx.data.jsonserde.JsonSerDe
+          Columns:
+            - { Name: id, Type: string }
+            - { Name: ts, Type: string }
+            - { Name: model_version, Type: string }
+            - { Name: species, Type: string }
+            - { Name: species_prob, Type: double }
+            - { Name: genus, Type: string }
+            - { Name: family, Type: string }
+            - { Name: top5, Type: "array<struct<name:string,prob:double>>" }
+            - { Name: latency_ms, Type: double }
+            - { Name: cold_start, Type: boolean }
+            - { Name: image_bytes, Type: bigint }
+
+  WorkGroup:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: slugid
+      RecursiveDeleteOption: true
+      WorkGroupConfiguration:
+        EnforceWorkGroupConfiguration: true
+        BytesScannedCutoffPerQuery: 1073741824  # 1 GB per query, a cost guard
+        ResultConfiguration:
+          OutputLocation: !Sub s3://${LogBucket}/athena-results/
+
+  TopSpeciesQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: top-species
+      Database: !Ref Database
+      WorkGroup: !Ref WorkGroup
+      QueryString: |
+        SELECT species, count(*) AS n, round(avg(species_prob), 3) AS avg_conf
+        FROM predictions
+        GROUP BY species ORDER BY n DESC LIMIT 20;
+
+  LowConfidenceQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: low-confidence-rate-by-day
+      Database: !Ref Database
+      WorkGroup: !Ref WorkGroup
+      QueryString: |
+        SELECT dt, count(*) AS n,
+               round(avg(CASE WHEN species_prob < 0.5 THEN 1.0 ELSE 0.0 END), 3) AS low_conf_rate
+        FROM predictions
+        GROUP BY dt ORDER BY dt;
+
+  LatencyQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: latency-cold-vs-warm
+      Database: !Ref Database
+      WorkGroup: !Ref WorkGroup
+      QueryString: |
+        SELECT cold_start, count(*) AS n,
+               approx_percentile(latency_ms, 0.5) AS p50_ms,
+               approx_percentile(latency_ms, 0.95) AS p95_ms
+        FROM predictions
+        GROUP BY cold_start;
+
+  Budget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: slugid-monthly
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit: { Amount: !Ref MonthlyBudgetUsd, Unit: USD }
+      NotificationsWithSubscribers:
+        - Notification: { NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 80 }
+          Subscribers: [{ SubscriptionType: EMAIL, Address: !Ref BudgetEmail }]
+        - Notification: { NotificationType: FORECASTED, ComparisonOperator: GREATER_THAN, Threshold: 100 }
+          Subscribers: [{ SubscriptionType: EMAIL, Address: !Ref BudgetEmail }]
+
+Outputs:
+  ModelBucket:
+    Value: !Ref ModelBucket
+  LogBucket:
+    Value: !Ref LogBucket
+    Export: { Name: slugid-LogBucket }
+  RepositoryUri:
+    Value: !GetAtt Repository.RepositoryUri
+  ExecutionRoleArn:
+    Value: !GetAtt ExecutionRole.Arn
+    Export: { Name: slugid-ExecutionRoleArn }
+  DeployRoleArn:
+    Description: Set as the AWS_ROLE_ARN GitHub Actions variable.
+    Value: !GetAtt DeployRole.Arn

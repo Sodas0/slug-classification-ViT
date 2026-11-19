@@ -1,0 +1,60 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: slugid inference Lambda with a public Function URL. Deployed by CI.
+
+Parameters:
+  ImageUri:
+    Type: String
+  ModelVersion:
+    Type: String
+
+Resources:
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/slugid
+      RetentionInDays: 14
+
+  Function:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroup
+    Properties:
+      FunctionName: slugid
+      PackageType: Image
+      Code: { ImageUri: !Ref ImageUri }
+      Role: !ImportValue slugid-ExecutionRoleArn
+      Architectures: [x86_64]
+      MemorySize: 3008  # CPU scales with memory; 3008 MB is the cap on new accounts
+      Timeout: 60
+      Environment:
+        Variables:
+          LOG_BUCKET: !ImportValue slugid-LogBucket
+          MODEL_VERSION: !Ref ModelVersion
+
+  FunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !Ref Function
+      AuthType: NONE
+      Cors:
+        AllowOrigins: ["*"]
+        AllowMethods: [GET, POST]
+        AllowHeaders: [content-type]
+
+  PublicUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Function
+      Action: lambda:InvokeFunctionUrl
+      Principal: "*"
+      FunctionUrlAuthType: NONE
+
+  PublicInvokePermission:  # public URLs also need InvokeFunction on newer accounts
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Function
+      Action: lambda:InvokeFunction
+      Principal: "*"
+
+Outputs:
+  FunctionUrl:
+    Value: !GetAtt FunctionUrl.FunctionUrl

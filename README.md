@@ -23,3 +23,20 @@ python -m slugid.data.download --manifest data/manifest.parquet --image-dir data
 python -m slugid.train --config configs/train_bioclip.yaml --manifest data/manifest_clean.parquet --image-dir data/images --out data/runs/bioclip
 python -m slugid.geo --manifest data/manifest_clean.parquet --classes-from data/runs/bioclip/best.pt --val-logits data/runs/bioclip/val_logits.pt --out data/runs/geo
 ```
+
+## Deploy (AWS Lambda)
+
+GitHub Actions builds the image, smoke-tests it, pushes it to ECR and deploys `infra/app.yaml`. Each prediction is logged to S3 and queryable in Athena (workgroup `slugid`, with saved queries).
+
+```bash
+aws cloudformation deploy --stack-name slugid-bootstrap --template-file infra/bootstrap.yaml \
+  --capabilities CAPABILITY_IAM --parameter-overrides BudgetEmail=<email>
+python -m slugid.export --checkpoint data/runs/bioclip_e12/best.pt --out data/export
+aws s3 cp data/export/ s3://slugid-models-<account>-<region>/models/v1/ --recursive
+```
+
+Set repo variables `AWS_REGION`, `MODEL_VERSION=v1` and `AWS_ROLE_ARN` (the bootstrap stack's `DeployRoleArn` output), then run the Deploy workflow.
+
+```bash
+curl -H 'content-type: image/jpeg' --data-binary @slug.jpg <function-url>
+```

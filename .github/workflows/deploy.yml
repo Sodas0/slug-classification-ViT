@@ -1,0 +1,90 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths: [Dockerfile, src/slugid/serve.py, src/slugid/index.html, infra/app.yaml, .github/workflows/deploy.yml]
+  workflow_dispatch:
+
+permissions:
+  id-token: write  # GitHub OIDC token, exchanged for short-lived AWS credentials
+  contents: read
+
+concurrency: deploy
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  MODEL_VERSION: ${{ vars.MODEL_VERSION }}
+
+jobs:
+  deploy:
+    if: vars.AWS_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Read bootstrap stack outputs
+        run: |
+          out() { aws cloudformation describe-stacks --stack-name slugid-bootstrap \
+            --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
+          echo "MODEL_BUCKET=$(out ModelBucket)" >> "$GITHUB_ENV"
+          echo "REPO_URI=$(out RepositoryUri)" >> "$GITHUB_ENV"
+
+      - name: Fetch model artifact
+        run: aws s3 cp "s3://$MODEL_BUCKET/models/$MODEL_VERSION/" model/ --recursive
+
+      - name: Build image
+        # Lambda rejects multi-platform manifests, so no provenance attestation.
+        run: docker build --provenance=false -t slugid:ci .
+
+      - name: Smoke test with the Lambda runtime emulator
+        run: |
+          docker run -d --rm -p 9000:8080 --name fn slugid:ci
+          python3 - <<'EOF'
+          import base64, json, time, urllib.request
+          url = "http://localhost:9000/2015-03-31/functions/function/invocations"
+          expected = {"assets/arion_fuscus.jpg": "Arion fuscus",
+                      "assets/hexabranchus_lacer.jpg": "Hexabranchus lacer"}
+          for path, species in expected.items():
+              event = {"body": base64.b64encode(open(path, "rb").read()).decode(),
+                       "isBase64Encoded": True}
+              for _ in range(30):
+                  try:
+                      req = urllib.request.Request(url, json.dumps(event).encode())
+                      resp = json.load(urllib.request.urlopen(req, timeout=60))
+                      break
+                  except OSError:
+                      time.sleep(2)
+              body = json.loads(resp["body"])
+              print(path, body["species"][0], f'{body["latency_ms"]} ms')
+              assert body["species"][0]["name"] == species, body
+          EOF
+          docker logs fn | tail -5
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Push image
+        run: |
+          docker tag slugid:ci "$REPO_URI:$GITHUB_SHA"
+          docker push "$REPO_URI:$GITHUB_SHA"
+
+      - name: Deploy
+        run: |
+          aws cloudformation deploy --stack-name slugid-app --template-file infra/app.yaml \
+            --parameter-overrides ImageUri="$REPO_URI:$GITHUB_SHA" ModelVersion="$MODEL_VERSION" \
+            --no-fail-on-empty-changeset
+
+      - name: Check live endpoint
+        run: |
+          URL=$(aws cloudformation describe-stacks --stack-name slugid-app \
+            --query "Stacks[0].Outputs[?OutputKey=='FunctionUrl'].OutputValue" --output text)
+          echo "Function URL: $URL" >> "$GITHUB_STEP_SUMMARY"
+          curl -sf --max-time 90 "${URL}health"
+          curl -sf --max-time 30 "$URL" | grep -q "Slug Identifier"
+          curl -sf --max-time 90 -H 'content-type: image/jpeg' \
+            --data-binary @assets/hexabranchus_lacer.jpg "$URL" | tee -a "$GITHUB_STEP_SUMMARY"
