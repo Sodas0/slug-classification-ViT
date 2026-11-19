@@ -65,6 +65,9 @@ class Predictor:
             p = softmax(outs[lvl][0])
             top = np.argsort(-p)[:k]
             result[lvl] = [{"name": lab[lvl][i], "prob": round(float(p[i]), 4)} for i in top]
+        ex = lab.get("examples", {})
+        names = [s["name"] for s in result["species"]]
+        result["examples"] = {n: ex[n] for n in names if n in ex}
         return result
 
 

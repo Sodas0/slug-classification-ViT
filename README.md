@@ -31,11 +31,11 @@ GitHub Actions builds the image, smoke-tests it, pushes it to ECR and deploys `i
 ```bash
 aws cloudformation deploy --stack-name slugid-bootstrap --template-file infra/bootstrap.yaml \
   --capabilities CAPABILITY_IAM --parameter-overrides BudgetEmail=<email>
-python -m slugid.export --checkpoint data/runs/bioclip_e12/best.pt --out data/export
-aws s3 cp data/export/ s3://slugid-models-<account>-<region>/models/v1/ --recursive
+python -m slugid.export --checkpoint data/runs/bioclip_e12/best.pt --manifest data/manifest_clean.parquet --out data/export
+aws s3 cp data/export/ s3://slugid-models-<account>-<region>/models/v2/ --recursive
 ```
 
-Set repo variables `AWS_REGION`, `MODEL_VERSION=v1` and `AWS_ROLE_ARN` (the bootstrap stack's `DeployRoleArn` output), then run the Deploy workflow.
+Set repo variables `AWS_REGION` and `AWS_ROLE_ARN` (the bootstrap stack's `DeployRoleArn` output), then run the Deploy workflow. The model version it ships is `MODEL_VERSION` in `.github/workflows/deploy.yml`.
 
 ```bash
 curl -H 'content-type: image/jpeg' --data-binary @slug.jpg <function-url>

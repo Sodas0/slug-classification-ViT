@@ -29,6 +29,15 @@
   .bar span { position: relative; }
   .bar i { position: absolute; inset: 0 auto 0 0; background: var(--bar); }
   .pct { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .row.pick { cursor: pointer; border-radius: 6px; }
+  .row.pick:hover .bar, .row.sel .bar { outline: 1px solid var(--accent); }
+  h3 { font-size: 0.95rem; font-weight: 600; margin: 20px 0 8px; }
+  h3 em { font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .grid a { display: block; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: var(--line); }
+  .grid img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .credit { color: var(--muted); font-size: 0.8rem; margin: 6px 0 0; }
+  @media (max-width: 420px) { .grid { grid-template-columns: repeat(2, 1fr); } }
 </style>
 </head>
 <body>
@@ -62,13 +71,34 @@ function shrink(file, max = 1024) {
   });
 }
 
+const esc = (t) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+function gallery(r, name) {
+  const ex = (r.examples || {})[name];
+  if (!ex) return name === "other"
+    ? `<h3>Probably not a slug</h3><p class="credit">The model thinks this is a snail, leech, flatworm or other look-alike.</p>`
+    : "";
+  const imgs = ex.map((e) =>
+    `<a href="https://www.inaturalist.org/observations/${e.obs}" target="_blank" rel="noopener">` +
+    `<img src="${e.url}" alt="${esc(name)}" loading="lazy"></a>`).join("");
+  return `<h3>Training photos of <em>${esc(name)}</em></h3><div class="grid">${imgs}</div>` +
+    `<p class="credit">Photos from iNaturalist observers. Tap one for the observation and credit.</p>`;
+}
+
 function render(r) {
   const top = r.species[0];
-  const rows = r.species.map((s) =>
-    `<div class="row"><div class="bar"><i style="width:${(s.prob * 100).toFixed(1)}%"></i><span>${s.name}</span></div>` +
+  const rows = r.species.map((s, i) =>
+    `<div class="row${(r.examples || {})[s.name] ? " pick" : ""}${i === 0 ? " sel" : ""}" data-i="${i}">` +
+    `<div class="bar"><i style="width:${(s.prob * 100).toFixed(1)}%"></i><span>${esc(s.name)}</span></div>` +
     `<div class="pct">${(s.prob * 100).toFixed(1)}%</div></div>`).join("");
   $("result").innerHTML =
-    `<h2>${top.name}</h2><p class="meta">Genus ${r.genus[0].name} · Family ${r.family[0].name} · ${r.latency_ms} ms</p>${rows}`;
+    `<h2>${esc(top.name)}</h2><p class="meta">Genus ${esc(r.genus[0].name)} · Family ${esc(r.family[0].name)} · ${r.latency_ms} ms</p>` +
+    `${rows}<div id="gallery">${gallery(r, top.name)}</div>`;
+  $("result").querySelectorAll(".row.pick").forEach((el) => el.addEventListener("click", () => {
+    $("result").querySelectorAll(".row").forEach((x) => x.classList.remove("sel"));
+    el.classList.add("sel");
+    $("gallery").innerHTML = gallery(r, r.species[+el.dataset.i].name);
+  }));
 }
 
 async function classify(file) {

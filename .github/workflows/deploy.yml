@@ -14,7 +14,7 @@ concurrency: deploy
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
-  MODEL_VERSION: ${{ vars.MODEL_VERSION }}
+  MODEL_VERSION: v2  # s3://<model bucket>/models/<version>/; bump to ship a new model
 
 jobs:
   deploy:
