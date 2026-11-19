@@ -9,17 +9,12 @@ __pycache__/
 .DS_Store
 
 # Data, model artifacts, run outputs (never committed)
-slug-classifier/data/
+/data/
 *.pt
 *.pth
 *.onnx
 wandb/
 *.log
-
-# Legacy local-only files from v1
-slug-classifier/speciesDATA/
-slug-classifier/models/
-slug-classifier/logs/
 
 # IDE
 .vscode/
