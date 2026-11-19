@@ -85,7 +85,8 @@ jobs:
             --query "Stacks[0].Outputs[?OutputKey=='FunctionUrl'].OutputValue" --output text)
           echo "Function URL: $URL" >> "$GITHUB_STEP_SUMMARY"
           aws lambda wait function-updated --function-name slugid
-          curl -sf --max-time 90 "${URL}health"
+          # Warm-up: the first request after a deploy is a slow cold start.
+          curl -sf --retry 2 --retry-all-errors --max-time 150 "${URL}health"
           # Save then grep: piping into grep -q makes curl hit a broken pipe, which pipefail fails.
           curl -sf --max-time 30 -o page.html "$URL" && grep -q "Slug Identifier" page.html
           curl -sf --max-time 90 -H 'content-type: image/jpeg' \

@@ -24,7 +24,7 @@ Resources:
       Role: !ImportValue slugid-ExecutionRoleArn
       Architectures: [x86_64]
       MemorySize: 3008  # CPU scales with memory; 3008 MB is the cap on new accounts
-      Timeout: 60
+      Timeout: 120  # first request after a deploy lazily pulls the image + 345 MB model (~60 s)
       Environment:
         Variables:
           LOG_BUCKET: !ImportValue slugid-LogBucket
