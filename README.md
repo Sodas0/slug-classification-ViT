@@ -1,6 +1,24 @@
 # slugid
 
-Slug species classifier: BioCLIP ViT-B/16 fine-tuned on iNaturalist open data, with species/genus/family heads and an optional location prior. 223 classes. Validation top-1 is 94.2% (macro 94.1%), and top-5 is 99.1%.
+Slug species classifier: BioCLIP ViT-B/16 fine-tuned on iNaturalist open data, with species/genus/family heads and an optional location prior. 223 classes (222 species plus "other").
+
+## Accuracy
+
+Splits are grouped by observer, so no photographer appears in more than one split. Checkpoint selection used val, so test is the number to quote.
+
+| | Val (45,335 photos) | Test (47,139 photos) |
+|:--|:-:|:-:|
+| Top-1 | 94.2% | 93.2% |
+| Top-5 | 99.1% | 98.7% |
+| Macro top-1 (balanced accuracy) | 94.1% | 93.2% |
+| Macro F1 | 94.1% | 93.1% |
+| Genus / family top-1 | 97.1 / 97.7% | 96.4 / 96.9% |
+| Top-1 with location prior | 96.6% | 95.9% |
+| Top-1, max 50 photos per observer | 91.9% | 92.0% |
+
+- A few prolific observers inflate the full-set numbers: ten observers supply about 40% of val and test photos and are easier than average. Capping photos per observer gives about 92%, the better estimate for a new user.
+- About half of the errors are sibling species in the same genus (for example *Ariolimax californicus* vs *dolichophallus*). The median species has 96–97% recall, but 54 of 223 species are below 90% on test.
+- Softmax scores are underconfident (ECE about 0.09), so treat them as a ranking, not a probability.
 
 | | |
 |:-:|:-:|
