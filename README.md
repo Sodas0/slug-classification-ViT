@@ -2,6 +2,8 @@
 
 Slug species classifier: BioCLIP ViT-B/16 fine-tuned on iNaturalist open data, with species/genus/family heads and an optional location prior. 223 classes (222 species plus "other").
 
+**Live demo:** https://blmjn7nia4daa3ksswqhfl6nce0vuoqq.lambda-url.us-west-2.on.aws/ (upload a photo; the first request after a deploy takes about 75 s while the model loads)
+
 ## Accuracy
 
 Splits are grouped by observer, so no photographer appears in more than one split. Checkpoint selection used val, so test is the number to quote.
