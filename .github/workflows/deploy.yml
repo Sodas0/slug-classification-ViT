@@ -3,7 +3,7 @@ name: Deploy
 on:
   push:
     branches: [main]
-    paths: [Dockerfile, src/slugid/serve.py, src/slugid/index.html, infra/app.yaml, .github/workflows/deploy.yml]
+    paths: [Dockerfile, src/slugid/serve.py, src/slugid/api.py, src/slugid/index.html, infra/app.yaml, .github/workflows/deploy.yml]
   workflow_dispatch:
 
 permissions:
@@ -42,28 +42,20 @@ jobs:
         # Lambda rejects multi-platform manifests, so no provenance attestation.
         run: docker build --provenance=false -t slugid:ci .
 
-      - name: Smoke test with the Lambda runtime emulator
+      - name: Smoke test
+        # The image is a plain web app outside Lambda, so test it over HTTP.
         run: |
-          docker run -d --rm -p 9000:8080 --name fn slugid:ci
-          python3 - <<'EOF'
-          import base64, json, time, urllib.request
-          url = "http://localhost:9000/2015-03-31/functions/function/invocations"
-          expected = {"assets/arion_fuscus.jpg": "Arion fuscus",
-                      "assets/hexabranchus_lacer.jpg": "Hexabranchus lacer"}
-          for path, species in expected.items():
-              event = {"body": base64.b64encode(open(path, "rb").read()).decode(),
-                       "isBase64Encoded": True}
-              for _ in range(30):
-                  try:
-                      req = urllib.request.Request(url, json.dumps(event).encode())
-                      resp = json.load(urllib.request.urlopen(req, timeout=60))
-                      break
-                  except OSError:
-                      time.sleep(2)
-              body = json.loads(resp["body"])
-              print(path, body["species"][0], f'{body["latency_ms"]} ms')
-              assert body["species"][0]["name"] == species, body
-          EOF
+          docker run -d --rm -p 8080:8080 --name fn slugid:ci
+          for _ in $(seq 60); do curl -sf localhost:8080/health && break || sleep 2; done
+          check() {
+            curl -sf --max-time 60 -F "file=@$1" localhost:8080/v1/predict | python3 -c "
+          import json, sys
+          top = json.load(sys.stdin)['species'][0]
+          print('$1', top)
+          assert top['name'] == '$2', top"
+          }
+          check assets/arion_fuscus.jpg "Arion fuscus"
+          check assets/hexabranchus_lacer.jpg "Hexabranchus lacer"
           docker logs fn | tail -5
 
       - uses: aws-actions/amazon-ecr-login@v2
@@ -89,5 +81,5 @@ jobs:
           curl -sf --retry 2 --retry-all-errors --max-time 150 "${URL}health"
           # Save then grep: piping into grep -q makes curl hit a broken pipe, which pipefail fails.
           curl -sf --max-time 30 -o page.html "$URL" && grep -q "Slug Identifier" page.html
-          curl -sf --max-time 90 -H 'content-type: image/jpeg' \
-            --data-binary @assets/hexabranchus_lacer.jpg "$URL" | tee -a "$GITHUB_STEP_SUMMARY"
+          curl -sf --max-time 90 -F file=@assets/hexabranchus_lacer.jpg "${URL}v1/predict" \
+            | tee -a "$GITHUB_STEP_SUMMARY"

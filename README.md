@@ -58,5 +58,5 @@ aws s3 cp data/export/ s3://slugid-models-<account>-<region>/models/v2/ --recurs
 Set repo variables `AWS_REGION` and `AWS_ROLE_ARN` (the bootstrap stack's `DeployRoleArn` output), then run the Deploy workflow. The model version it ships is `MODEL_VERSION` in `.github/workflows/deploy.yml`.
 
 ```bash
-curl -H 'content-type: image/jpeg' --data-binary @slug.jpg <function-url>
+curl -F file=@slug.jpg <function-url>/v1/predict
 ```

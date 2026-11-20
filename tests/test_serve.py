@@ -1,7 +1,3 @@
-import base64
-import json
-from types import SimpleNamespace
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -99,36 +95,3 @@ def test_predictor_returns_ranked_probs(model_dir):
         probs = [r["prob"] for r in result[lvl]]
         assert len(probs) == 3 and probs == sorted(probs, reverse=True)
         assert {r["name"] for r in result[lvl]} <= set(TAX[lvl])
-
-
-def call(event):
-    return serve.handler(event, SimpleNamespace(aws_request_id="req-1"))
-
-
-def test_handler(model_dir, monkeypatch):
-    monkeypatch.setenv("MODEL_DIR", str(model_dir[0]))
-    monkeypatch.delenv("LOG_BUCKET", raising=False)
-    monkeypatch.setattr(serve, "_predictor", None)
-    logged = []
-    monkeypatch.setattr(serve, "_log", lambda record, bucket: logged.append(record))
-
-    get = {"requestContext": {"http": {"method": "GET"}}}
-    health = call({**get, "rawPath": "/health"})
-    assert health["statusCode"] == 200 and json.loads(health["body"])["classes"] == 3
-    page = call({**get, "rawPath": "/"})
-    assert page["headers"]["content-type"].startswith("text/html")
-    assert "Slug Identifier" in page["body"]
-
-    event = {"body": base64.b64encode(jpeg()).decode(), "isBase64Encoded": True}
-    ok = call(event)
-    body = json.loads(ok["body"])
-    assert ok["statusCode"] == 200 and body["id"] == "req-1" and len(body["species"]) == 3
-    assert not logged  # no bucket configured
-
-    monkeypatch.setenv("LOG_BUCKET", "bucket")
-    call(event)
-    assert logged[0]["species"] == body["species"][0]["name"] and logged[0]["cold_start"] is False
-
-    bad = call({"body": base64.b64encode(b"not an image").decode(), "isBase64Encoded": True})
-    assert bad["statusCode"] == 400
-    assert call({"body": ""})["statusCode"] == 400

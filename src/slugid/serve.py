@@ -1,18 +1,12 @@
-"""CPU inference and the AWS Lambda handler, which also serves an upload page (index.html).
+"""CPU inference: preprocessing and the ONNX Predictor. No web code; slugid.api wraps it.
 
-Depends only on numpy, Pillow and onnxruntime (plus boto3, which Lambda provides) so the
-serving image stays small. Expects model.onnx and labels.json from slugid.export in
-MODEL_DIR. Each prediction is logged as one JSON object to s3://LOG_BUCKET/predictions/
-when LOG_BUCKET is set, partitioned by date for Athena.
+Depends only on numpy, Pillow and onnxruntime so the serving image stays small. Expects
+model.onnx and labels.json from slugid.export in the model directory.
 """
 
-import base64
 import io
 import json
 import os
-import time
-import uuid
-from datetime import UTC, datetime
 
 import numpy as np
 from PIL import Image, ImageOps
@@ -69,81 +63,3 @@ class Predictor:
         names = [s["name"] for s in result["species"]]
         result["examples"] = {n: ex[n] for n in names if n in ex}
         return result
-
-
-_predictor = None
-_s3 = None
-
-
-def _response(status: int, body: dict) -> dict:
-    return {
-        "statusCode": status,
-        "headers": {"content-type": "application/json"},
-        "body": json.dumps(body),
-    }
-
-
-def _page() -> dict:
-    html = open(os.path.join(os.path.dirname(__file__), "index.html")).read()
-    return {
-        "statusCode": 200,
-        "headers": {"content-type": "text/html; charset=utf-8"},
-        "body": html,
-    }
-
-
-def _log(record: dict, bucket: str):
-    global _s3
-    if _s3 is None:
-        import boto3
-
-        _s3 = boto3.client("s3")
-    key = f"predictions/dt={record['ts'][:10]}/{record['id']}.json"
-    _s3.put_object(Bucket=bucket, Key=key, Body=json.dumps(record).encode())
-
-
-def handler(event, context):
-    """Lambda Function URL handler. GET / serves the web page, GET /health a health check,
-    and POST takes raw image bytes and returns predictions."""
-    global _predictor
-    cold = _predictor is None
-    if cold:
-        _predictor = Predictor(os.environ.get("MODEL_DIR", "/opt/model"))
-
-    method = event.get("requestContext", {}).get("http", {}).get("method", "POST")
-    if method == "GET":
-        if event.get("rawPath", "/") == "/health":
-            return _response(200, {"status": "ok", "classes": len(_predictor.labels["species"])})
-        return _page()
-
-    body = event.get("body") or ""
-    data = base64.b64decode(body) if event.get("isBase64Encoded") else body.encode("latin-1")
-    if not data:
-        return _response(400, {"error": "POST an image as the request body"})
-
-    start = time.perf_counter()
-    try:
-        pred = _predictor(data)
-    except Exception as e:  # unreadable image
-        return _response(400, {"error": f"could not read image: {e}"})
-    latency_ms = round((time.perf_counter() - start) * 1000, 1)
-
-    record = {
-        "id": getattr(context, "aws_request_id", None) or str(uuid.uuid4()),
-        "ts": datetime.now(UTC).isoformat(),
-        "model_version": os.environ.get("MODEL_VERSION", "dev"),
-        "species": pred["species"][0]["name"],
-        "species_prob": pred["species"][0]["prob"],
-        "genus": pred["genus"][0]["name"],
-        "family": pred["family"][0]["name"],
-        "top5": pred["species"],
-        "latency_ms": latency_ms,
-        "cold_start": cold,
-        "image_bytes": len(data),
-    }
-    if bucket := os.environ.get("LOG_BUCKET"):
-        try:
-            _log(record, bucket)
-        except Exception as e:  # logging must never break a prediction
-            print(f"prediction log failed: {e}")
-    return _response(200, {"id": record["id"], "latency_ms": latency_ms, **pred})

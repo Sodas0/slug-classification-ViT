@@ -108,9 +108,11 @@ async function classify(file) {
   status("Classifying… the first request after a while can take ~20 s while the model loads.");
   try {
     const body = await shrink(file);
-    const res = await fetch(location.pathname, { method: "POST", headers: { "content-type": "image/jpeg" }, body });
+    const form = new FormData();
+    form.append("file", body, "photo.jpg");
+    const res = await fetch("/v1/predict", { method: "POST", body: form });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || res.statusText);
+    if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : res.statusText);
     status(""); render(data);
   } catch (e) { status(e.message, true); }
 }

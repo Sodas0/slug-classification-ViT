@@ -12,7 +12,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -e ".[dev,train,serve]" --extra-index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -e ".[dev,train,serve,api]" --extra-index-url https://download.pytorch.org/whl/cpu
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
