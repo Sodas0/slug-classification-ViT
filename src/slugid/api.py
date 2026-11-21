@@ -50,12 +50,14 @@ class Health(BaseModel):
     status: str
     model_version: str
     classes: int
+    uptime_s: float
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Load once at startup so /health only answers once the model is ready.
     app.state.predictor = Predictor(os.environ.get("MODEL_DIR", "/opt/model"))
+    app.state.started = time.monotonic()  # container age; low means a fresh cold start
     app.state.served = False  # flips on the first request, to flag cold starts in the log
     app.state.s3 = None
     yield
@@ -81,7 +83,8 @@ def page() -> str:
 @app.get("/health")
 def health(request: Request) -> Health:
     n = len(request.app.state.predictor.labels["species"])
-    return Health(status="ok", model_version=MODEL_VERSION, classes=n)
+    uptime = round(time.monotonic() - request.app.state.started, 1)
+    return Health(status="ok", model_version=MODEL_VERSION, classes=n, uptime_s=uptime)
 
 
 # Plain `def` (not async): inference is CPU-bound and blocking, so FastAPI runs it in a

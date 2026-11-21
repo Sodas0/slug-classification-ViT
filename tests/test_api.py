@@ -47,6 +47,7 @@ def test_page_and_health(client):
     assert page.headers["content-type"].startswith("text/html") and "Slug Identifier" in page.text
     health = client.get("/health").json()
     assert health["status"] == "ok" and health["classes"] == 3
+    assert health["uptime_s"] >= 0
 
 
 def test_predict(client):
