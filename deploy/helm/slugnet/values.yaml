@@ -1,0 +1,60 @@
+# Defaults for the slugnet chart. Override with `-f file.yaml` or `--set a.b=c`.
+
+# Built locally (`docker build -t slugnet:dev .`) and never pushed to a registry, so
+# IfNotPresent: the node already has it. With Always the kubelet would try to pull it and fail.
+image:
+  repository: slugnet
+  tag: dev
+  pullPolicy: IfNotPresent
+
+modelVersion: v2 # exported as MODEL_VERSION; shows up in /health and in prediction logs
+containerPort: 8080
+
+# Ignored while autoscaling.enabled: the HPA owns the replica count then (see deployment.yaml).
+replicaCount: 1
+
+# The scheduler places a pod on a node with this much *unreserved* capacity (requests), and
+# the kernel enforces limits. Memory over the limit => OOMKilled. CPU over the limit => throttled.
+# Measured (v2 model, ONNX Runtime): 529 MB resident idle, 605 MB peak with 4 concurrent
+# requests. Request ~ steady state plus headroom; limit = the point where a leak should be killed.
+resources:
+  requests:
+    cpu: 500m
+    memory: 768Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# All three probes hit /health, which only answers once the model is loaded (api.py lifespan).
+# Differences are in what Kubernetes does on failure, and in when each one runs.
+probes:
+  startup: # runs first and alone; liveness and readiness wait for it. Budget: period * failureThreshold
+    periodSeconds: 5
+    failureThreshold: 36 # 3 minutes to load the model before the container is restarted
+  readiness: # failing => pod removed from Service endpoints (no traffic), not restarted
+    periodSeconds: 10
+    failureThreshold: 3
+    timeoutSeconds: 3
+  liveness: # failing => container restarted
+    periodSeconds: 20
+    failureThreshold: 3
+    timeoutSeconds: 5
+
+service:
+  type: ClusterIP
+  port: 80
+
+# Rancher Desktop's k3s ships Traefik, bound to localhost:80. *.localhost resolves to 127.0.0.1.
+ingress:
+  enabled: true
+  className: traefik
+  host: slugnet.localhost
+  annotations: {}
+
+# Needs metrics-server (bundled with k3s). Utilization is a percentage of the CPU *request*.
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 60
+  scaleDownStabilizationSeconds: 60 # Kubernetes default is 300; shortened so scale-down is watchable

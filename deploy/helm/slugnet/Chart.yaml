@@ -1,0 +1,6 @@
+apiVersion: v2
+name: slugnet
+description: Slug identifier (ONNX ViT, FastAPI) with probes, resource limits, Traefik ingress and a CPU autoscaler
+type: application
+version: 0.1.0   # version of the chart itself: bump when templates or values change
+appVersion: "v2" # version of the thing it deploys (the model version)

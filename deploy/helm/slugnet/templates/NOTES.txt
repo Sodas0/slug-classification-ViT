@@ -1,0 +1,18 @@
+slugnet {{ .Release.Name }} installed in namespace {{ .Release.Namespace }}.
+
+Watch it come up:
+  kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }} -w
+{{- if .Values.ingress.enabled }}
+
+Then:
+  curl http://{{ .Values.ingress.host }}/health
+{{- else }}
+
+Ingress is off. Reach it with:
+  kubectl port-forward svc/{{ include "slugnet.fullname" . }} 8080:{{ .Values.service.port }}
+{{- end }}
+{{- if .Values.autoscaling.enabled }}
+
+Autoscaler:
+  kubectl get hpa {{ include "slugnet.fullname" . }} -w
+{{- end }}
